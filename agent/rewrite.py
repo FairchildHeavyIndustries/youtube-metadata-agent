@@ -36,7 +36,10 @@ def _load_brief(client_name: str) -> str:
 def _load_categories(client_name: str) -> list[str]:
     cat_path = Path(f"clients/{client_name}/categories.json")
     with open(cat_path) as f:
-        cats = json.load(f)
+        data = json.load(f)
+    cats = data.get("categories", data)
+    if isinstance(cats, list):
+        return [c["key"] for c in cats]
     return list(cats.keys())
 
 
@@ -87,7 +90,7 @@ def _call_claude_sync(model: str, system: str, user: str, cached_system: bool = 
     ]
     resp = _CLIENT.messages.create(
         model=model,
-        max_tokens=2500,
+        max_tokens=6000,
         system=system_content,
         messages=[{"role": "user", "content": user}],
     )
@@ -149,7 +152,7 @@ async def _rewrite_one_async(
                 ]
                 resp = await _ASYNC_CLIENT.messages.create(
                     model=model,
-                    max_tokens=2500,
+                    max_tokens=6000,
                     system=system_content,
                     messages=[{"role": "user", "content": prompt}],
                 )
@@ -166,7 +169,7 @@ async def _rewrite_one_async(
         try:
             resp = await _ASYNC_CLIENT.messages.create(
                 model=ESCALATION_MODEL,
-                max_tokens=2500,
+                max_tokens=6000,
                 system=brief,
                 messages=[{"role": "user", "content": prompt}],
             )
@@ -211,7 +214,7 @@ def _rewrite_batch(
             "custom_id": video.get("id", f"video_{i}"),
             "params": {
                 "model": PRIMARY_MODEL,
-                "max_tokens": 2500,
+                "max_tokens": 6000,
                 "system": system_content,
                 "messages": [{"role": "user", "content": _video_prompt(video, categories)}],
             },

@@ -88,7 +88,6 @@ def diff(client_name: str) -> Path:
         table.add_column("Proposed", style="green", ratio=1)
 
         md_section = [f"\n## {vid_id} — {current_snippet.get('title', 'Unknown')}\n"]
-        md_section.append("| Field | Current | Proposed |\n|---|---|---|\n")
 
         for dotpath, label in FIELDS:
             curr_val = current_flat.get(dotpath, "")
@@ -103,14 +102,15 @@ def diff(client_name: str) -> Path:
             else:
                 table.add_row(label, curr_display, "[dim](unchanged)[/dim]")
 
-            md_section.append(
-                f"| {label} | {curr_val[:200].replace('|', '/')} | {prop_val[:200].replace('|', '/')} |\n"
-            )
+            md_section.append(f"### {label}\n")
+            md_section.append(f"**Current:** {curr_val if curr_val else '_(empty)_'}\n\n")
+            md_section.append(f"**Proposed:** {prop_val if prop_val else '_(empty)_'}\n\n")
 
         notes = proposed.get("rewrite_notes", "")
         if notes:
             table.add_row("Rewrite Notes", "", f"[italic]{_truncate(notes, 500)}[/italic]")
-            md_section.append(f"\n**Notes:** {notes}\n")
+            md_section.append(f"### Rewrite Notes\n{notes}\n\n")
+        md_section.append("---\n")
 
         console.print(table)
         md_lines.extend(md_section)

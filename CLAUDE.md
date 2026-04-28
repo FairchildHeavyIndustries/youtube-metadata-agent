@@ -2,7 +2,30 @@
 ### fairchildheavyindustries/youtube-metadata-agent
 
 **Version:** 2.0
-**Status:** Ready for implementation
+**Status:** Step 4 (Rewrite) batch in progress — waiting for poller to retrieve results
+
+**Current run:** Batch `msgbatch_013Ehkp27pVje5sGPJbtdS63` submitted 2026-04-28 ~4:46 PM ET. Batch completed (56/56 succeeded) — poller retrieving results.
+
+**Previous failed run:** Batch `msgbatch_01XUt1HKuu6HQiP6vTd9kGCG` (2026-04-28, ~$9.55) failed due to `max_tokens=2500` truncating responses mid-JSON. Fixed to `max_tokens=6000` in `agent/rewrite.py`.
+
+### How to check for completion
+
+```bash
+# Check if proposed_metadata.json has been written (the finish signal):
+ls -lh clients/sweepandvac/output/proposed_metadata.json
+
+# Check batch status directly:
+python -c "
+import anthropic; from dotenv import load_dotenv; load_dotenv()
+b = anthropic.Anthropic().messages.batches.retrieve('msgbatch_013Ehkp27pVje5sGPJbtdS63')
+print(b.processing_status, b.request_counts)
+"
+
+# Watch the polling process:
+ps aux | grep rewrite | grep -v grep
+```
+
+Once `proposed_metadata.json` exists, run Step 5: `python agent/diff.py --client sweepandvac`
 
 ---
 
@@ -89,6 +112,7 @@ youtube-metadata-agent/
 - **`rich`** — terminal diff display for human review
 - **`jinja2`** — report templating
 - **`pytest`** — testing
+- **`pandoc`** (system CLI, installed via `brew install pandoc`) — converts `diff_<date>.md` to `diff_<date>.docx` for client review. Run: `pandoc clients/{client}/output/diff_<date>.md -o clients/{client}/output/diff_<date>.docx`
 
 ---
 
@@ -97,8 +121,8 @@ youtube-metadata-agent/
 Copy `.env.example` to `.env` for local development. In CI (GitHub Actions), populate the same variables as repository secrets.
 
 ```
-GOOGLE_CLIENT_ID=***REDACTED***
-GOOGLE_CLIENT_SECRET=***REDACTED***
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
 GOOGLE_REFRESH_TOKEN=        # populated by auth/oauth_setup.py
 ANTHROPIC_API_KEY=
 YOUTUBE_CHANNEL_ID=          # e.g. UCxxxxxxxxxxxxxxx
@@ -168,9 +192,9 @@ python agent/rewrite.py --client sweepandvac
 ```
 For each video, sends the current metadata to Claude with the client brief (`clients/sweepandvac/brief.md`) as the system prompt. Claude returns rewritten title, description, tags, localizations, and playlist category. Writes to `clients/sweepandvac/output/proposed_metadata.json`.
 
-**Batch mode (default, `ANTHROPIC_USE_BATCH=true`):** submits all 50 videos to the Anthropic Batch API in a single request. Results are returned asynchronously within 24 hours. The script polls every 5 minutes and writes results incrementally as they arrive. This is the default because the 50% batch discount brings the rewrite cost for a 50-video channel under $0.50. When batch mode is enabled, the step is non-blocking — the operator can check back later.
+**Batch mode (default, `ANTHROPIC_USE_BATCH=true`):** submits all videos to the Anthropic Batch API in a single request. Results are returned asynchronously within 24 hours. The script polls every 5 minutes and writes results incrementally as they arrive. When batch mode is enabled, the step is non-blocking — the operator can check back later.
 
-**Real-time mode (`ANTHROPIC_USE_BATCH=false`):** processes videos with `asyncio.gather` in groups of 10 parallel requests for immediate results. Use this when you need the diff the same day. Cost is roughly double batch mode but still under $1 for 50 videos.
+**Real-time mode (`ANTHROPIC_USE_BATCH=false`):** processes videos with `asyncio.gather` in groups of 10 parallel requests for immediate results. Use this when you need the diff the same day.
 
 **Prompt caching:** the brief.md system prompt (~5,500 tokens) is marked for caching with `cache_control: {type: "ephemeral"}`. After the first request, every subsequent call reads the cached brief at 10% of standard input cost. This is the single biggest cost lever — the brief dominates input token count.
 
@@ -278,16 +302,18 @@ Current API pricing (April 2026):
 
 Batch API: **50% off** all token costs. Stacks with caching.
 
-**Estimated cost for 50-video channel rewrite (Sweep & Vac):**
+**Estimated cost for 56-video channel rewrite (Sweep & Vac, measured April 2026):**
 
-Per-video token estimate: ~5,500 tokens input (brief, cached after first call) + ~300 tokens (video metadata) + ~2,000 tokens output.
+Per-video token reality: ~19,000 tokens input (brief is not reliably cached in Batch API) + ~6,000 tokens output. The brief.md system prompt is larger than assumed and Batch API caching is less reliable than real-time streaming.
 
 | Scenario | Effective cost |
 |---|---|
-| Sonnet 4.6, batch, caching | **~$0.30 total** |
-| Sonnet 4.6, real-time, caching | **~$0.60 total** |
-| Opus 4.7 escalations (est. 5 videos) | **~$0.10 additional** |
-| **Full run, worst case** | **< $1.00** |
+| Sonnet 4.6, batch, no caching | **~$5–7 total** |
+| Sonnet 4.6, real-time, caching warm | **~$2–3 total** |
+| Opus 4.7 escalations per video | **~$0.30/video additional** |
+| **First run, measured (56 videos, heavy Opus escalation due to truncation bug)** | **~$9.55** |
+
+**Key lesson:** the output schema requires two full 200-word descriptions (ES + EN) plus titles, tags, and notes — actual output is ~4,000–5,000 tokens per video, not 2,000. Use `max_tokens=6000`. With that fix and Sonnet-only (no escalation), expect ~$3–5 for a 50-video channel.
 
 The Pro plan (claude.ai) and the API are billed separately. This agent uses the API exclusively — it has no impact on claude.ai usage limits.
 
