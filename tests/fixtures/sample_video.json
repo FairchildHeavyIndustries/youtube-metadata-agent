@@ -1,0 +1,27 @@
+{
+  "id": "dQw4w9WgXcQ",
+  "snippet": {
+    "title": "Barredoras Industriales - Demostración",
+    "description": "Demostración de barredoras industriales en Puerto Rico.",
+    "tags": ["barredora", "industrial"],
+    "defaultLanguage": "es",
+    "defaultAudioLanguage": "es",
+    "publishedAt": "2023-01-15T12:00:00Z",
+    "categoryId": "28"
+  },
+  "statistics": {
+    "viewCount": "42",
+    "likeCount": "3",
+    "commentCount": "1"
+  },
+  "status": {
+    "privacyStatus": "public",
+    "uploadStatus": "processed"
+  },
+  "localizations": {
+    "es": {
+      "title": "Barredoras Industriales - Demostración",
+      "description": "Demostración de barredoras industriales en Puerto Rico."
+    }
+  }
+}

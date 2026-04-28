@@ -1,0 +1,166 @@
+{
+  "$schema_version": "2.0",
+  "client": "sweepandvac",
+  "channel_id_env": "YOUTUBE_CHANNEL_ID",
+  "default_privacy_status": "public",
+  "_source_note": "Categories mirror the live site product catalog (sweepandvac.com / products.js, April 2026). Slugs match exactly so YouTube playlists align with on-site navigation. Some YouTube videos depict legacy products no longer in the catalog (e.g., Cannycom, Metro Tram) — these are handled via the legacy_products map below.",
+
+  "categories": [
+    {
+      "key": "aereos",
+      "title": "Aéreos — Plataformas y Camiones de Altura",
+      "description": "Plataformas aéreas de trabajo, camiones pluma con canasta, spider lifts y elevadores telescópicos para mantenimiento eléctrico, telecomunicaciones, construcción, y trabajos en altura en Puerto Rico. Versalift, CMC, Elliott, y ReachMaster — distribuidos por Sweep and Vac Unlimited. sweepandvac.com",
+      "assignment_hints": {
+        "brands": ["Versalift", "CMC", "Elliott", "ReachMaster", "PHX", "TruGuard"],
+        "keywords_es": ["camión pluma", "canasta aérea", "plataforma elevadora", "spider lift", "equipo de altura", "elevador articulado"],
+        "keywords_en": ["bucket truck", "aerial lift", "boom lift", "spider lift", "scissor lift", "telescopic lift"],
+        "model_patterns": ["TEL-29", "VanTel-29", "VST", "VO", "SC"]
+      }
+    },
+    {
+      "key": "aspiradoras",
+      "title": "Aspiradoras y Camiones de Succión",
+      "description": "Aspiradoras industriales todoterreno, camiones de succión, y camiones vactor para limpieza urbana, mantenimiento de alcantarillado, parques, frentes marítimos, y operaciones municipales en Puerto Rico. Madvac, Minuteman, y Vac-Con — distribuidos por Sweep and Vac Unlimited. sweepandvac.com",
+      "assignment_hints": {
+        "brands": ["Madvac", "Minuteman", "Vac-Con"],
+        "keywords_es": ["aspiradora industrial", "aspiradora de basura", "camión vactor", "camión de succión", "limpieza de alcantarillado", "succión industrial"],
+        "keywords_en": ["litter vacuum", "industrial vacuum", "vactor", "vac truck", "sewer cleaner", "combination truck"],
+        "model_patterns": ["LN50", "LP61D", "LR50"]
+      }
+    },
+    {
+      "key": "barredoras",
+      "title": "Barredoras de Calles",
+      "description": "Barredoras mecánicas y de succión para municipios, contratistas, y obras públicas en Puerto Rico. Equipos diseñados para la limpieza eficiente de calles, carreteras, estacionamientos, y áreas industriales. Global Sweepers, Schwarze, PowerBoss, y Madvac — distribuidos por Sweep and Vac Unlimited. sweepandvac.com",
+      "assignment_hints": {
+        "brands": ["Global Sweepers", "Schwarze", "PowerBoss", "Madvac"],
+        "keywords_es": ["barredora", "barredora de calles", "barredora mecánica", "barredora de succión", "barredora municipal"],
+        "keywords_en": ["street sweeper", "sweeper", "mechanical sweeper", "vacuum sweeper", "municipal sweeper"],
+        "model_patterns": ["M3", "M4", "M6", "S6", "A7"]
+      }
+    },
+    {
+      "key": "emergencia",
+      "title": "Emergencia y Seguridad",
+      "description": "Vehículos de emergencia, equipos de bomberos, sistemas de protección, y soluciones de seguridad para departamentos de bomberos, manejo de emergencias, y agencias de seguridad pública en Puerto Rico. Spartan, Malley, y Hardboard Guard — distribuidos por Sweep and Vac Unlimited. sweepandvac.com",
+      "assignment_hints": {
+        "brands": ["Spartan", "Malley", "Hardboard Guard"],
+        "keywords_es": ["bomberos", "rescate", "vehículo de emergencia", "camión de bomberos", "manejo de emergencias", "seguridad pública"],
+        "keywords_en": ["fire truck", "rescue", "emergency vehicle", "fire apparatus", "emergency response", "public safety"],
+        "model_patterns": []
+      }
+    },
+    {
+      "key": "lavadoras",
+      "title": "Lavadoras a Presión",
+      "description": "Lavadoras a presión industriales y sistemas de agua caliente para mantenimiento municipal, contratistas, y aplicaciones industriales en Puerto Rico. Equipos Mystic — distribuidos por Sweep and Vac Unlimited, expertos en equipos pesados desde hace más de 30 años. sweepandvac.com",
+      "assignment_hints": {
+        "brands": ["Mystic", "Mystic Washer"],
+        "keywords_es": ["lavadora a presión", "lavado a presión", "agua caliente", "limpieza industrial"],
+        "keywords_en": ["pressure washer", "hot water washer", "industrial washer"],
+        "model_patterns": []
+      }
+    },
+    {
+      "key": "multiuso",
+      "title": "Vehículos Multiuso",
+      "description": "Vehículos eléctricos multiuso, vehículos especializados de transporte, y soluciones de movilidad urbana para municipios, instituciones, y operadores en Puerto Rico. GEM y otras marcas distribuidas por Sweep and Vac Unlimited. sweepandvac.com",
+      "assignment_hints": {
+        "brands": ["GEM", "Metro Tram"],
+        "keywords_es": ["vehículo multiuso", "vehículo eléctrico", "transporte turístico", "metro tram", "movilidad urbana"],
+        "keywords_en": ["multi-use vehicle", "electric vehicle", "tourist tram", "metro tram", "specialty vehicle"],
+        "model_patterns": ["e2", "e4", "e6"]
+      }
+    },
+    {
+      "key": "pavimento",
+      "title": "Pavimento — Mantenimiento de Carreteras",
+      "description": "Equipos de bacheo, mantenimiento de carreteras, y reparación de pavimento para municipios, departamentos de transportación, y contratistas en Puerto Rico. Hot Patch y otros sistemas — distribuidos por Sweep and Vac Unlimited. sweepandvac.com",
+      "assignment_hints": {
+        "brands": ["Hot Patch"],
+        "keywords_es": ["bacheo", "mantenimiento de carreteras", "reparación de pavimento", "hot patch", "asfalto"],
+        "keywords_en": ["hot patch", "pavement repair", "road maintenance", "asphalt repair", "pothole repair"],
+        "model_patterns": []
+      }
+    },
+    {
+      "key": "playas",
+      "title": "Limpiadoras de Playa",
+      "description": "Limpiadoras de playa y equipos de mantenimiento costero para municipios costeros, operadores de playa, y agencias turísticas en Puerto Rico. Beach Tech — distribuido por Sweep and Vac Unlimited. sweepandvac.com",
+      "assignment_hints": {
+        "brands": ["Beach Tech", "Beachtech", "Cherrington"],
+        "keywords_es": ["limpiadora de playa", "playa", "limpieza costera", "arena", "mantenimiento costero"],
+        "keywords_en": ["beach cleaner", "beach", "shore cleaner", "sand cleaner", "coastal maintenance"],
+        "model_patterns": []
+      }
+    },
+    {
+      "key": "podadoras",
+      "title": "Podadoras y RC Mowers",
+      "description": "Podadoras radiocontroladas, podadoras de taludes, y equipos de manejo de vegetación para terrenos difíciles, taludes, carreteras, y áreas de difícil acceso en Puerto Rico. Spider Mowers, RC Mowers, y Orec — distribuidos por Sweep and Vac Unlimited para municipios, contratistas, y mantenimiento. sweepandvac.com",
+      "assignment_hints": {
+        "brands": ["Spider Mowers", "Spider Mower", "RC Mowers", "Orec", "Cannycom"],
+        "keywords_es": ["podadora", "podadora de taludes", "podadora radiocontrolada", "manejo de vegetación", "corte de grama"],
+        "keywords_en": ["mower", "RC mower", "slope mower", "remote control mower", "brush cutter"],
+        "model_patterns": ["AHRC663", "Trailblazer"]
+      }
+    },
+    {
+      "key": "residuos",
+      "title": "Residuos y Reciclaje",
+      "description": "Camiones de residuos, equipos de reciclaje, y soluciones de manejo de desperdicios para municipios, contratistas privados, y agencias de manejo de residuos en Puerto Rico. Perkins y Wilkens — distribuidos por Sweep and Vac Unlimited. sweepandvac.com",
+      "assignment_hints": {
+        "brands": ["Perkins", "Wilkens"],
+        "keywords_es": ["camión de basura", "manejo de residuos", "reciclaje", "transferencia de residuos", "remolque de residuos"],
+        "keywords_en": ["waste truck", "refuse truck", "recycling truck", "waste transfer", "trailer"],
+        "model_patterns": ["SAT6"]
+      }
+    },
+    {
+      "key": "restregadoras",
+      "title": "Restregadoras de Pisos",
+      "description": "Restregadoras industriales para limpieza de pisos en almacenes, plantas, instituciones, y aplicaciones comerciales en Puerto Rico. Minuteman — distribuido por Sweep and Vac Unlimited. sweepandvac.com",
+      "assignment_hints": {
+        "brands": ["Minuteman"],
+        "keywords_es": ["restregadora", "restregadora de pisos", "limpieza de pisos industrial", "fregadora"],
+        "keywords_en": ["floor scrubber", "scrubber", "industrial floor cleaner", "auto scrubber"],
+        "model_patterns": []
+      }
+    },
+    {
+      "key": "tecnologia",
+      "title": "Tecnología Ruggedizada",
+      "description": "Tabletas y computadoras ruggedizadas para profesionales de campo, seguridad pública, servicios públicos, y operaciones industriales en Puerto Rico. Getac, Awesome Lifts, y otros equipos especializados — distribuidos por Sweep and Vac Unlimited. sweepandvac.com",
+      "assignment_hints": {
+        "brands": ["Getac", "Awesome Lifts"],
+        "keywords_es": ["tableta ruggedizada", "computadora resistente", "tableta industrial", "tecnología de campo"],
+        "keywords_en": ["rugged tablet", "rugged computer", "industrial tablet", "field technology"],
+        "model_patterns": ["UX10", "A140", "F110", "F120", "K120", "ZX10", "ZX80"]
+      }
+    }
+  ],
+
+  "fallback_category": {
+    "key": "sin_categoria",
+    "title": "Sin Categoría",
+    "description": "Videos pendientes de categorización. Para más información sobre los equipos pesados que distribuye Sweep and Vac Unlimited en Puerto Rico, visita sweepandvac.com.",
+    "create_playlist": false,
+    "note": "Videos assigned to this category are flagged in the diff for human review. No playlist is created — the operator must reassign these manually before pushing playlist memberships."
+  },
+
+  "legacy_products": {
+    "_note": "Some YouTube videos depict products that are no longer in the live catalog. Map them to the closest current category so videos still get organized into the right playlist for buyers searching today.",
+    "Cannycom": "podadoras",
+    "Metro Tram": "multiuso",
+    "Mystic Washer 2": "lavadoras",
+    "Vac-Con Costa Rica": "aspiradoras"
+  },
+
+  "assignment_rules": {
+    "match_order": ["brands", "model_patterns", "keywords_es", "keywords_en"],
+    "match_fields": ["title", "description", "tags"],
+    "match_type": "case_insensitive_substring",
+    "tie_breaker": "first_match_wins",
+    "notes": "The agent uses these hints as a fallback only. The primary source of truth for playlist_category is Claude's output in the rewrite step. These hints are used by audit.py to flag mismatches and by playlists.py to validate assignments. Legacy products map to the closest current category — see legacy_products above."
+  }
+}

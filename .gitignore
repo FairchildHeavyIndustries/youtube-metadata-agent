@@ -1,0 +1,31 @@
+# Environment and secrets
+.env
+.tokens.json
+
+# Claude Code session data
+.claude/
+
+# Client output data
+clients/*/output/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+*.pyc
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
