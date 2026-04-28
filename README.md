@@ -2,7 +2,7 @@
 
 Audits and rewrites YouTube video and channel metadata for B2B clients with underperforming channels. Uses the YouTube Data API v3 for reads and writes, and the Anthropic Batch API to rewrite titles, descriptions, tags, and localizations against a client-supplied SEO brief.
 
-**First client:** Sweep & Vac Unlimited (`@sweepandvac`) — a Puerto Rico-based heavy equipment distributor.
+
 
 ---
 
@@ -39,25 +39,25 @@ Each step is a standalone script. No write operations occur before Step 6.
 
 ### Step 1 — Fetch
 ```bash
-python agent/fetch.py --client sweepandvac
+python agent/fetch.py --client client_name
 ```
-Pulls all video and channel metadata. Writes `clients/sweepandvac/output/current_metadata.json`.
+Pulls all video and channel metadata. Writes `clients/client_name/output/current_metadata.json`.
 
 ### Step 2 — Backup
 ```bash
-python agent/backup.py --client sweepandvac
+python agent/backup.py --client client_name
 ```
 Creates an immutable `original_backup_<date>.json`. Refuses to overwrite an existing backup.
 
 ### Step 3 — Audit
 ```bash
-python agent/audit.py --client sweepandvac
+python agent/audit.py --client client_name
 ```
 Analyzes current metadata and writes `audit_<date>.json` with findings (missing localizations, short descriptions, etc.).
 
 ### Step 4 — Rewrite
 ```bash
-python agent/rewrite.py --client sweepandvac
+python agent/rewrite.py --client client_name
 ```
 Sends each video to Claude with the client SEO brief as the system prompt. Writes `proposed_metadata.json`.
 
@@ -66,31 +66,31 @@ Real-time: set `ANTHROPIC_USE_BATCH=false` for immediate results via `asyncio`.
 
 ### Step 5 — Diff (human review gate)
 ```bash
-python agent/diff.py --client sweepandvac
+python agent/diff.py --client client_name
 ```
 Displays a rich terminal side-by-side diff. Also writes `diff_<date>.md`. **No YouTube writes at this step.** Edit `proposed_metadata.json` manually if needed before approving.
 
 ### Step 6 — Push (videos)
 ```bash
-python agent/push.py --client sweepandvac --approve
+python agent/push.py --client client_name --approve
 ```
 Pushes approved metadata to YouTube. Idempotent (consults `pushed.json` ledger). Use `--resume` to continue an interrupted run. Hard-refuses if `DRY_RUN=true`.
 
 ### Step 7 — Channel
 ```bash
-python agent/channel.py --client sweepandvac --approve
+python agent/channel.py --client client_name --approve
 ```
-Updates channel description, keywords, and default language from `clients/sweepandvac/channel.md`.
+Updates channel description, keywords, and default language from `clients/client_name/channel.md`.
 
 ### Step 8 — Playlists
 ```bash
-python agent/playlists.py --client sweepandvac --approve
+python agent/playlists.py --client client_name --approve
 ```
 Creates playlists from `categories.json` and assigns each video to its category.
 
 ### Step 9 — Report
 ```bash
-python agent/report.py --client sweepandvac
+python agent/report.py --client client_name
 ```
 Generates `report_<date>.md` — a before/after summary suitable for client delivery.
 

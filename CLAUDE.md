@@ -97,8 +97,8 @@ youtube-metadata-agent/
 Copy `.env.example` to `.env` for local development. In CI (GitHub Actions), populate the same variables as repository secrets.
 
 ```
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
+GOOGLE_CLIENT_ID=***REDACTED***
+GOOGLE_CLIENT_SECRET=***REDACTED***
 GOOGLE_REFRESH_TOKEN=        # populated by auth/oauth_setup.py
 ANTHROPIC_API_KEY=
 YOUTUBE_CHANNEL_ID=          # e.g. UCxxxxxxxxxxxxxxx
