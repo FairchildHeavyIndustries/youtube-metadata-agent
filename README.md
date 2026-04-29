@@ -2,6 +2,8 @@
 
 Audits and rewrites YouTube video and channel metadata for B2B clients with underperforming channels. Uses the YouTube Data API v3 for reads and writes, and the Anthropic Batch API to rewrite titles, descriptions, tags, and localizations against a client-supplied SEO brief.
 
+This project was built collaboratively with [Claude Code](https://claude.ai/code). See [CLAUDE.md](CLAUDE.md) for the agent context, architectural conventions, and module reference.
+
 
 
 ---

@@ -1,0 +1,45 @@
+{
+  "categories": {
+    "product_line_a": {
+      "label": "Product Line A",
+      "description": "Videos featuring [first major product category — e.g., street sweepers, aerial lifts, vacuum trucks]",
+      "keywords": ["keyword1", "keyword2", "keyword3"]
+    },
+    "product_line_b": {
+      "label": "Product Line B",
+      "description": "Videos featuring [second major product category]",
+      "keywords": ["keyword1", "keyword2", "keyword3"]
+    },
+    "product_line_c": {
+      "label": "Product Line C",
+      "description": "Videos featuring [third major product category]",
+      "keywords": ["keyword1", "keyword2", "keyword3"]
+    },
+    "demonstrations": {
+      "label": "Product Demonstrations",
+      "description": "Live demos and walkthroughs of equipment in operation",
+      "keywords": ["demo", "demonstration", "walkthrough", "in action"]
+    },
+    "testimonials": {
+      "label": "Customer Testimonials",
+      "description": "Customers describing their experience with the product or company",
+      "keywords": ["testimonial", "review", "customer", "case study"]
+    },
+    "trade_shows": {
+      "label": "Trade Shows & Events",
+      "description": "Coverage from industry events, expos, and trade shows",
+      "keywords": ["trade show", "expo", "event", "conference"]
+    },
+    "other": {
+      "label": "General / Other",
+      "description": "Videos that don't fit a specific product category — company overview, behind-the-scenes, etc.",
+      "keywords": []
+    }
+  },
+  "_notes": [
+    "Add or remove categories to match the client's actual product lines.",
+    "The 'playlist_category' value in Claude's response must match one of the keys above exactly.",
+    "Categories map 1:1 to YouTube playlists created in Step 8 (playlists.py).",
+    "Keep category count reasonable (6-12) — too many playlists fragment discoverability."
+  ]
+}

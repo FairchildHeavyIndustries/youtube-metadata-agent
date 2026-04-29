@@ -5,8 +5,9 @@
 # Claude Code session data
 .claude/
 
-# Client output data
-clients/*/output/
+# Client data — real client folders are gitignored; only clients/example_client/ is committed
+# To add a new real client: add clients/<client_name>/ here
+clients/sweepandvac/
 
 # Python
 __pycache__/

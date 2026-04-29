@@ -1,37 +1,13 @@
 # YouTube Metadata SEO Agent
 ### fairchildheavyindustries/youtube-metadata-agent
 
-**Version:** 2.0
-**Status:** Step 4 (Rewrite) batch in progress — waiting for poller to retrieve results
-
-**Current run:** Batch `msgbatch_013Ehkp27pVje5sGPJbtdS63` submitted 2026-04-28 ~4:46 PM ET. Batch completed (56/56 succeeded) — poller retrieving results.
-
-**Previous failed run:** Batch `msgbatch_01XUt1HKuu6HQiP6vTd9kGCG` (2026-04-28, ~$9.55) failed due to `max_tokens=2500` truncating responses mid-JSON. Fixed to `max_tokens=6000` in `agent/rewrite.py`.
-
-### How to check for completion
-
-```bash
-# Check if proposed_metadata.json has been written (the finish signal):
-ls -lh clients/sweepandvac/output/proposed_metadata.json
-
-# Check batch status directly:
-python -c "
-import anthropic; from dotenv import load_dotenv; load_dotenv()
-b = anthropic.Anthropic().messages.batches.retrieve('msgbatch_013Ehkp27pVje5sGPJbtdS63')
-print(b.processing_status, b.request_counts)
-"
-
-# Watch the polling process:
-ps aux | grep rewrite | grep -v grep
-```
-
-Once `proposed_metadata.json` exists, run Step 5: `python agent/diff.py --client sweepandvac`
+This file is the agent context and architectural reference for this codebase. It is read by Claude Code at the start of every session. See the README for setup and usage.
 
 ---
 
 ## Project Purpose
 
-This agent audits and rewrites YouTube video and channel metadata (titles, descriptions, tags, localizations, playlists, channel keywords, About section) for B2B clients with underperforming channels. The first client is **Sweep & Vac Unlimited** (`@sweepandvac`) — a Puerto Rico-based heavy equipment distributor with 50+ videos averaging 10–50 views on recent uploads.
+This agent audits and rewrites YouTube video and channel metadata (titles, descriptions, tags, localizations, playlists, channel keywords, About section) for B2B clients with underperforming channels.
 
 The agent:
 1. Pulls all existing video and channel metadata from the YouTube Data API v3
@@ -43,7 +19,7 @@ The agent:
 7. Updates channel-level metadata (keywords, About section, default language)
 8. Outputs a before/after audit report for client delivery
 
-This is a **portfolio-grade agentic workflow** — the pattern generalizes to any client with a YouTube presence. All client-specific logic lives in per-client config files, not code.
+The pattern generalizes to any client with a YouTube presence. All client-specific logic lives in per-client config files under `clients/` — no code changes required to onboard a new client.
 
 ---
 
@@ -51,7 +27,7 @@ This is a **portfolio-grade agentic workflow** — the pattern generalizes to an
 
 ```
 youtube-metadata-agent/
-├── CLAUDE.md                  ← this file
+├── CLAUDE.md                  ← this file (agent context + architecture reference)
 ├── README.md                  ← setup and usage guide
 ├── pyproject.toml             ← dependencies and project config
 ├── .env.example               ← env var template (never commit .env)
@@ -71,7 +47,7 @@ youtube-metadata-agent/
 │   ├── report.py              ← generate before/after report
 │   └── ledger.py              ← idempotency tracking (pushed.json)
 ├── clients/
-│   └── sweepandvac/
+│   └── example_client/        ← template — copy this for each new client
 │       ├── brief.md           ← SEO brief for Claude (system prompt)
 │       ├── categories.json    ← playlist categories + assignment hints
 │       ├── channel.md         ← channel-level metadata to apply
@@ -97,6 +73,8 @@ youtube-metadata-agent/
         └── sample_video.json
 ```
 
+Real client folders (e.g. `clients/acme/`) are gitignored — they contain proprietary SEO briefs and channel data. Only `clients/example_client/` is committed as a template.
+
 ---
 
 ## Tech Stack
@@ -104,7 +82,7 @@ youtube-metadata-agent/
 - **Python 3.11+**
 - **YouTube Data API v3** — fetch and update video and channel metadata
 - **Google OAuth 2.0** — channel owner authorization (one-time, refresh token persisted)
-- **Anthropic API** — primary model: **`claude-sonnet-4-6`** with Batch API for rewrites; Opus 4.7 reserved for escalation only (see Cost Model section)
+- **Anthropic API** — primary model: **`claude-sonnet-4-6`** with Batch API for rewrites; Opus 4.7 reserved for escalation only
 - **`google-api-python-client`** — YouTube API client
 - **`google-auth-oauthlib`** — OAuth flow
 - **`anthropic`** — Anthropic Python SDK
@@ -112,7 +90,7 @@ youtube-metadata-agent/
 - **`rich`** — terminal diff display for human review
 - **`jinja2`** — report templating
 - **`pytest`** — testing
-- **`pandoc`** (system CLI, installed via `brew install pandoc`) — converts `diff_<date>.md` to `diff_<date>.docx` for client review. Run: `pandoc clients/{client}/output/diff_<date>.md -o clients/{client}/output/diff_<date>.docx`
+- **`pandoc`** (system CLI, `brew install pandoc`) — converts `diff_<date>.md` to `diff_<date>.docx` for client delivery
 
 ---
 
@@ -160,21 +138,21 @@ The full workflow is gated by an explicit human-review step. No write operations
 
 ### Step 1 — Fetch
 ```bash
-python agent/fetch.py --client sweepandvac
+python agent/fetch.py --client <client_name>
 ```
-Pulls all video IDs, titles, descriptions, tags, default language, localizations, view counts, and playlist assignments. Also fetches channel-level metadata (description, keywords, branding settings). Writes to `clients/sweepandvac/output/current_metadata.json`.
+Pulls all video IDs, titles, descriptions, tags, default language, localizations, view counts, and playlist assignments. Also fetches channel-level metadata (description, keywords, branding settings). Writes to `clients/<client_name>/output/current_metadata.json`.
 
-Uses `videos.list` batched at 50 IDs per call (1 unit per call) and `channels.list` (1 unit).
+Uses `videos.list` batched at 50 IDs per call (1 quota unit per call) and `channels.list` (1 unit).
 
 ### Step 2 — Backup
 ```bash
-python agent/backup.py --client sweepandvac
+python agent/backup.py --client <client_name>
 ```
-Copies `current_metadata.json` to `clients/sweepandvac/output/original_backup_<YYYY-MM-DD>.json`. **Never overwrites an existing backup file** — if one exists for today's date, the script aborts with an error. This file is the restore point if anything goes wrong. It must be created before any push.
+Copies `current_metadata.json` to `clients/<client_name>/output/original_backup_<YYYY-MM-DD>.json`. **Never overwrites an existing backup file** — if one exists for today's date, the script aborts. This file is the restore point if anything goes wrong. It must exist before any push step will run.
 
 ### Step 3 — Audit
 ```bash
-python agent/audit.py --client sweepandvac
+python agent/audit.py --client <client_name>
 ```
 Analyzes `current_metadata.json` and writes `output/audit_<date>.json` with findings:
 - Count of videos with English-only titles
@@ -188,70 +166,62 @@ These findings populate the "Before" half of the client report.
 
 ### Step 4 — Rewrite
 ```bash
-python agent/rewrite.py --client sweepandvac
+python agent/rewrite.py --client <client_name>
 ```
-For each video, sends the current metadata to Claude with the client brief (`clients/sweepandvac/brief.md`) as the system prompt. Claude returns rewritten title, description, tags, localizations, and playlist category. Writes to `clients/sweepandvac/output/proposed_metadata.json`.
+For each video, sends the current metadata to Claude with the client brief (`clients/<client_name>/brief.md`) as the system prompt. Claude returns rewritten title, description, tags, localizations, and playlist category. Writes to `clients/<client_name>/output/proposed_metadata.json`.
 
-**Batch mode (default, `ANTHROPIC_USE_BATCH=true`):** submits all videos to the Anthropic Batch API in a single request. Results are returned asynchronously within 24 hours. The script polls every 5 minutes and writes results incrementally as they arrive. When batch mode is enabled, the step is non-blocking — the operator can check back later.
+**Batch mode (default, `ANTHROPIC_USE_BATCH=true`):** submits all videos to the Anthropic Batch API in a single request. Results are returned asynchronously within 24 hours. The script polls every 5 minutes and writes results incrementally as they arrive.
 
-**Real-time mode (`ANTHROPIC_USE_BATCH=false`):** processes videos with `asyncio.gather` in groups of 10 parallel requests for immediate results. Use this when you need the diff the same day.
+**Real-time mode (`ANTHROPIC_USE_BATCH=false`):** processes videos with `asyncio.gather` in groups of 10 parallel requests for immediate results.
 
-**Prompt caching:** the brief.md system prompt (~5,500 tokens) is marked for caching with `cache_control: {type: "ephemeral"}`. After the first request, every subsequent call reads the cached brief at 10% of standard input cost. This is the single biggest cost lever — the brief dominates input token count.
+**Prompt caching:** the brief.md system prompt is marked for caching with `cache_control: {type: "ephemeral"}`. After the first request, every subsequent call reads the cached brief at 10% of standard input cost. This is the single biggest cost lever — the brief dominates input token count.
 
-**Model escalation:** first pass uses `ANTHROPIC_MODEL` (Sonnet 4.6). Any video that returns a parse error or fails the validation checklist on the second parse attempt is automatically re-submitted using `ANTHROPIC_ESCALATION_MODEL` (Opus 4.7). Escalations are logged to `output/escalations.json` for review.
+**Model escalation:** first pass uses `ANTHROPIC_MODEL` (Sonnet 4.6). Any video that returns a parse error or fails validation on the second attempt is automatically re-submitted using `ANTHROPIC_ESCALATION_MODEL` (Opus 4.7). Escalations are logged to `output/escalations.json`.
 
-**Rate limiting:** the rewrite step calls Anthropic, not YouTube. YouTube quota is not consumed here.
+**Important:** the output schema requires two full 200-word descriptions (primary language + English) plus titles, tags, and notes — actual output runs ~4,000–5,000 tokens per video. Use `max_tokens=6000` or responses will be truncated mid-JSON.
 
 ### Step 5 — Diff (human review gate)
 ```bash
-python agent/diff.py --client sweepandvac
+python agent/diff.py --client <client_name>
 ```
 Displays a side-by-side terminal diff of every field for every video using `rich`. Writes a Markdown version to `output/diff_<date>.md` for sharing with the client.
 
-**No changes are made to YouTube at this step.** The operator either approves (proceeds to Step 6) or edits `proposed_metadata.json` manually before approving.
+**No changes are made to YouTube at this step.** Edit `proposed_metadata.json` manually if needed before approving.
 
 ### Step 6 — Push (videos)
 ```bash
-python agent/push.py --client sweepandvac --approve
+python agent/push.py --client <client_name> --approve
 ```
-Pushes approved metadata to YouTube via `videos.update`. Behavior:
+Pushes approved metadata to YouTube via `videos.update`. Key behaviors:
 
 - **Idempotency:** consults `output/pushed.json` ledger first. Videos already marked as pushed are skipped.
 - **Resume:** if interrupted, re-running with `--resume` continues from the last unpushed video.
-- **Rate limit:** sleeps `WRITE_RATE_LIMIT_SECONDS` (default 1) between calls.
-- **DRY_RUN guard:** if `DRY_RUN=true`, prints what would be sent and refuses to write. This is a hard refusal, not a warning. The flag must be explicitly flipped to `false` for writes to occur.
-- **Per-video error isolation:** a failure on video N logs to `output/push_errors.json` and continues to video N+1. Never aborts the run on a single failure.
-- **Localizations:** writes `localizations.es` (primary) and `localizations.en` (secondary) per the brief.
-- **Default language:** sets `snippet.defaultLanguage` and `snippet.defaultAudioLanguage` to `es` (override per-video if the brief specifies otherwise).
-
-After each successful update, the video ID is appended to `pushed.json` immediately (not at end of run).
+- **DRY_RUN guard:** if `DRY_RUN=true`, prints what would be sent and refuses to write. Hard refusal, not a warning. Must be explicitly set to `false`.
+- **Per-video error isolation:** a failure on video N logs to `push_errors.json` and continues to N+1.
+- **Ledger writes:** each successful push appends to `pushed.json` immediately, not at end of run.
 
 ### Step 7 — Channel
 ```bash
-python agent/channel.py --client sweepandvac --approve
+python agent/channel.py --client <client_name> --approve
 ```
-Updates channel-level metadata from `clients/sweepandvac/channel.md`:
-- `brandingSettings.channel.description` — Spanish-first About section
-- `brandingSettings.channel.keywords` — replacement keyword string
-- `brandingSettings.channel.defaultLanguage` — `es`
+Updates channel-level metadata from `clients/<client_name>/channel.md`:
+- `brandingSettings.channel.description`
+- `brandingSettings.channel.keywords`
+- `brandingSettings.channel.defaultLanguage`
 
 Same DRY_RUN and approval semantics as Step 6.
 
 ### Step 8 — Playlists
 ```bash
-python agent/playlists.py --client sweepandvac --approve
+python agent/playlists.py --client <client_name> --approve
 ```
-Creates playlists from `clients/sweepandvac/categories.json` (checking for existing playlists first by title to avoid duplicates), then assigns each video to its category as determined in the rewrite step.
+Creates playlists from `categories.json` (checking for existing playlists first by title to avoid duplicates), then assigns each video to its category as determined in the rewrite step.
 
 ### Step 9 — Report
 ```bash
-python agent/report.py --client sweepandvac
+python agent/report.py --client <client_name>
 ```
-Generates `clients/sweepandvac/output/report_<date>.md` from the audit findings, the diff, and the push ledger. Suitable for direct delivery to the client. Sections:
-- Executive summary (videos updated, playlists created, channel changes)
-- Audit findings (the "before" picture)
-- Sample of rewrites (5 representative videos, before/after)
-- Next steps (60- and 90-day review checkpoints)
+Generates `clients/<client_name>/output/report_<date>.md` from the audit findings, the diff, and the push ledger. Suitable for direct delivery to the client.
 
 ---
 
@@ -281,18 +251,18 @@ If quota is exceeded mid-run, the agent catches `HttpError 403` with reason `quo
 `agent/rewrite.py` calls the Anthropic API using the Batch API by default.
 
 - **Primary model:** `claude-sonnet-4-6` (override via `ANTHROPIC_MODEL` env var)
-- **Escalation model:** `claude-opus-4-7` (override via `ANTHROPIC_ESCALATION_MODEL` env var) — used only for videos that fail Sonnet's first and second parse attempts
-- **Validation model:** `claude-haiku-4-5-20251001` — used for a fast spot-check pass on 10% of completed rewrites to confirm hard rules are followed (title length, tag count, no placeholders)
-- **API mode:** Batch API by default (`ANTHROPIC_USE_BATCH=true`); real-time `asyncio` available via flag
+- **Escalation model:** `claude-opus-4-7` (override via `ANTHROPIC_ESCALATION_MODEL`) — used only for videos that fail Sonnet's first and second parse attempts
+- **Validation model:** `claude-haiku-4-5-20251001` — fast spot-check pass on 10% of completed rewrites to confirm hard rules are followed (title length, tag count, no placeholders)
+- **API mode:** Batch API by default; real-time `asyncio` available via `ANTHROPIC_USE_BATCH=false`
 - **System prompt:** contents of `clients/{client}/brief.md`, marked with `cache_control: {type: "ephemeral"}` for prompt caching
 - **User prompt:** current video metadata as JSON (one video per batch request)
-- **Response format:** strict JSON, schema below
-- **Max tokens:** 2500 per video
+- **Response format:** strict JSON (schema below)
+- **Max tokens:** 6000 per video
 - **Retries:** on parse failure, retry once (real-time) or flag for escalation (batch). Second failure escalates to Opus 4.7. If Opus also fails, log to `parse_errors.json` and skip.
 
 ### Cost model
 
-Current API pricing (April 2026):
+Current API pricing:
 
 | Model | Input | Output | Cached input |
 |---|---|---|---|
@@ -302,54 +272,48 @@ Current API pricing (April 2026):
 
 Batch API: **50% off** all token costs. Stacks with caching.
 
-**Estimated cost for 56-video channel rewrite (Sweep & Vac, measured April 2026):**
-
-Per-video token reality: ~19,000 tokens input (brief is not reliably cached in Batch API) + ~6,000 tokens output. The brief.md system prompt is larger than assumed and Batch API caching is less reliable than real-time streaming.
+Estimated cost for a 50-video channel rewrite:
 
 | Scenario | Effective cost |
 |---|---|
-| Sonnet 4.6, batch, no caching | **~$5–7 total** |
-| Sonnet 4.6, real-time, caching warm | **~$2–3 total** |
-| Opus 4.7 escalations per video | **~$0.30/video additional** |
-| **First run, measured (56 videos, heavy Opus escalation due to truncation bug)** | **~$9.55** |
+| Sonnet 4.6, batch, no caching | ~$5–7 total |
+| Sonnet 4.6, real-time, caching warm | ~$2–3 total |
+| Opus 4.7 escalations | ~$0.30/video additional |
 
-**Key lesson:** the output schema requires two full 200-word descriptions (ES + EN) plus titles, tags, and notes — actual output is ~4,000–5,000 tokens per video, not 2,000. Use `max_tokens=6000`. With that fix and Sonnet-only (no escalation), expect ~$3–5 for a 50-video channel.
-
-The Pro plan (claude.ai) and the API are billed separately. This agent uses the API exclusively — it has no impact on claude.ai usage limits.
+Note: prompt caching is less reliable in Batch API mode than real-time — brief.md may not be cached across batch requests. Real-time mode with warm cache is the most cost-efficient path for channels with large briefs.
 
 ### Required response schema
 
 ```json
 {
-  "title": "string, max 100 chars, follows brief title formula",
-  "description": "string, min 200 words, follows brief description structure",
-  "tags": ["array", "of", "strings", "min 15 items"],
+  "title": "string, max 100 chars",
+  "description": "string, min 200 words",
+  "tags": ["array of strings, min 15 items"],
   "default_language": "es",
   "localizations": {
     "es": { "title": "...", "description": "..." },
     "en": { "title": "...", "description": "..." }
   },
-  "playlist_category": "one of the 12 category keys from categories.json",
+  "playlist_category": "one of the category keys from categories.json",
   "rewrite_notes": "brief explanation of key changes for the diff view"
 }
 ```
 
-The `rewrite_notes` field is for human reviewers in the diff step — not pushed to YouTube.
+`rewrite_notes` is for human reviewers in the diff step — not pushed to YouTube.
 
 ---
 
 ## Error Handling
 
-- **OAuth token expiry:** `token_store.py` handles automatic refresh. If refresh fails, prompt the operator to re-run `auth/oauth_setup.py`.
-- **YouTube quota exceeded:** catch `HttpError 403` with reason `quotaExceeded`. Log remaining videos to `output/pending.json` and exit cleanly.
+- **OAuth token expiry:** `token_store.py` handles automatic refresh. If refresh fails, re-run `auth/oauth_setup.py`.
+- **YouTube quota exceeded:** catch `HttpError 403 quotaExceeded`. Log remaining videos to `output/pending.json` and exit cleanly.
 - **YouTube rate limit (429):** exponential backoff up to 3 retries, then log to `push_errors.json` and continue.
-- **Claude parse failure (real-time mode):** retry once with an explicit JSON reminder. If it fails twice, escalate to Opus 4.7. If Opus also fails, write raw response to `parse_errors.json` and skip.
-- **Claude parse failure (batch mode):** failed batch items are flagged in the batch result. The script automatically re-submits them as a real-time Opus 4.7 call. Logged to `output/escalations.json`.
-- **Batch API timeout:** Anthropic Batch API guarantees results within 24 hours. If polling exceeds 26 hours without completion, log the batch ID to `output/batch_errors.json` and exit. The operator can resume by re-running with the stored batch ID.
-- **Claude rate limit:** the SDK handles backoff internally for real-time calls. Batch API is not subject to rate limits.
+- **Claude parse failure (real-time):** retry once with an explicit JSON reminder. Second failure escalates to Opus 4.7. If Opus also fails, write raw response to `parse_errors.json` and skip.
+- **Claude parse failure (batch):** failed batch items are automatically re-submitted as a real-time Opus 4.7 call. Logged to `output/escalations.json`.
+- **Batch API timeout:** Anthropic guarantees results within 24 hours. If polling exceeds 26 hours, log the batch ID to `output/batch_errors.json` and exit for manual resume.
 - **Push failure on individual video:** log to `push_errors.json`, continue. Never abort the run.
 - **DRY_RUN guard:** if `DRY_RUN=true`, all push/update/insert operations print intended payload and refuse to execute. Tested explicitly in `test_push.py`.
-- **Backup missing:** `push.py` and `channel.py` refuse to run if no `original_backup_*.json` exists for the current client. Hard requirement.
+- **Backup missing:** `push.py` and `channel.py` refuse to run if no `original_backup_*.json` exists for the current client.
 
 ---
 
@@ -368,28 +332,25 @@ Coverage target: 80%+ on `agent/` modules.
 
 ---
 
-## Generalizing to New Clients
+## Adding a New Client
 
-To onboard a new client:
+1. Copy `clients/example_client/` to `clients/{client_name}/`
+2. Edit `brief.md` with the client's SEO rules, tone, and hard constraints
+3. Edit `categories.json` with their playlist structure
+4. Edit `channel.md` with their channel-level metadata
+5. Set `YOUTUBE_CHANNEL_ID` in `.env` to their channel ID
+6. Run `auth/oauth_setup.py` with their Google account
+7. Run the full workflow
 
-1. Create `clients/{client_name}/brief.md` with their SEO rules
-2. Create `clients/{client_name}/categories.json` with playlist structure
-3. Create `clients/{client_name}/channel.md` with channel-level metadata
-4. Set `YOUTUBE_CHANNEL_ID` in `.env` to their channel ID
-5. Run `auth/oauth_setup.py` with their Google account
-6. Run the full workflow
-
-No code changes required. All client-specific logic lives in the three config files.
+No code changes required.
 
 ---
 
 ## Out of Scope (v1)
 
-These items are mentioned in the source analysis but deferred:
-
-- **Thumbnails.** Generation and upload of consistent thumbnail templates is a separate workstream — likely a different agent that uses an image generation model. Not in this repo.
-- **Cards and end screens.** YouTube's API support for these is limited and clunky; the client's media manager can configure them manually after metadata is in place.
-- **Shorts cross-posting.** The vertical/horizontal shoot discipline is a process change, not an automation problem. This agent only handles metadata for content that already exists on the channel.
+- **Thumbnails.** Consistent thumbnail generation is a separate workstream, likely a different agent using an image generation model.
+- **Cards and end screens.** YouTube's API support is limited; configure manually after metadata is in place.
+- **Shorts cross-posting.** This agent only handles metadata for content that already exists on the channel.
 - **Comment moderation and engagement.** Out of scope.
 
 ---
@@ -399,7 +360,7 @@ These items are mentioned in the source analysis but deferred:
 - Designed to run locally for client onboarding, then in GitHub Actions for scheduled monthly refreshes
 - Refresh token stored as a GitHub repository secret (`GOOGLE_REFRESH_TOKEN`)
 - Output files in `clients/*/output/` are gitignored — they contain client data
-- `original_backup_*.json` files should be archived to a separate location (e.g., S3, Google Drive) for long-term retention beyond the active project
+- `original_backup_*.json` files should be archived externally (e.g., S3, Google Drive) for long-term retention
 
 ---
 
@@ -407,20 +368,10 @@ These items are mentioned in the source analysis but deferred:
 
 Track these metrics 30/60/90 days after metadata push:
 
-| Metric | Tool | Sweep & Vac baseline |
-|---|---|---|
-| Views on recent uploads | YouTube Studio Analytics | 10–50/video |
-| Impressions from search | YouTube Search report | near zero |
-| Click-through rate | YouTube Studio | unknown |
-| Channel-level search traffic | YouTube Studio | minimal |
-| Organic search ranking | Google Search Console | unlisted |
-
-The Sweep & Vac channel has a 29K-view video from 9 years ago (Cannycom podadoras) that proves the format works on this channel. The goal is to replicate that discoverability across the back catalog.
-
----
-
-## Contact
-
-**Repo owner:** Fairchild Heavy Industries
-**First client:** Sweep & Vac Unlimited, Puerto Rico
-**YouTube channel:** `@sweepandvac`
+| Metric | Tool |
+|---|---|
+| Views on recent uploads | YouTube Studio Analytics |
+| Impressions from search | YouTube Search report |
+| Click-through rate | YouTube Studio |
+| Channel-level search traffic | YouTube Studio |
+| Organic search ranking | Google Search Console |
