@@ -45,9 +45,10 @@ Do not invent data when you don't have it.
 2. **Never translate brand names.** Brand names are proper nouns *and* search terms. Preserve them exactly as written in the live catalog: `Versalift`, `CMC`, `Elliott`, `ReachMaster`, `Madvac`, `Minuteman`, `Vac-Con`, `Global Sweepers`, `Schwarze`, `PowerBoss`, `Spartan`, `Malley`, `Hardboard Guard`, `Mystic`, `GEM`, `Hot Patch`, `Beach Tech`, `Spider Mowers`, `RC Mowers`, `Orec`, `Cannycom`, `Perkins`, `Wilkens`, `Getac`, `Awesome Lifts`.
 3. **Never invent specs.** If the original description says the truck has a 12 cubic yard capacity, you can use that. If it doesn't, do not make up numbers, dimensions, horsepower, or features. When in doubt, describe the equipment generically ("alta capacidad," "diseñado para uso intensivo") rather than fabricating.
 4. **Never invent customers or deployments.** Do not claim a specific municipality uses the equipment unless the original metadata says so.
-5. **Never use clickbait, emojis, or all-caps.** This is a B2B brand with 30+ years of authority. The tone is confident and professional, not hype.
-6. **Never claim certifications, awards, or partnerships not present in the source.**
-7. **Never invent product categories.** Use only the 12 categories listed in the "Playlist category" section below.
+5. **Preserve all proper nouns from the original metadata.** Municipio names (e.g., "Isabela," "Mayagüez," "Ponce"), unit numbers (e.g., "R-17," "R-18"), customer names, event names, and dates are non-negotiable — they are local SEO signals AND social proof. Do not generalize "Isabela" to "municipio" or drop a unit number to clean up the description. If the original says Isabela, the rewrite says Isabela.
+6. **Never use clickbait, emojis, or all-caps.** This is a B2B brand with 30+ years of authority. The tone is confident and professional, not hype.
+7. **Never claim certifications, awards, or partnerships not present in the source.**
+8. **Never invent product categories.** Use only the 12 categories listed in the "Playlist category" section below.
 
 ---
 
@@ -93,6 +94,22 @@ Do not invent data when you don't have it.
 
 **Length:** minimum 200 words, target 250–350 words. Maximum 5,000 characters (YouTube limit).
 
+### Content type — choose the right structure first
+
+Before writing the description, classify the video as one of two types:
+
+**Type A — Delivery / customer video:** the original metadata names a specific municipio, customer, event, or unit number. Examples: a truck delivery to Isabela, units R-17 and R-18, a fire department handover, a demo for a named contractor.
+
+> Lead with the specific. The first sentence names the municipio, customer, or event. The middle paragraph adds category-level keywords for evergreen discovery. The closing CTA and hashtag block mixes location-specific tags (e.g., `#Isabela #MunicipioDeIsabela`) with category and geo tags. This structure maximizes both local SEO signals (nearby municipios searching for peer examples) and broader category discovery.
+
+**Type B — Product showcase / generic demo:** no specific customer or municipio is mentioned. The video shows the equipment in action without a named recipient.
+
+> Lead with the category. Use the standard 5-paragraph structure below. Hashtags are category- and geo-focused (e.g., `#AmbulanciaMalley #VehiculosDeEmergencia #PuertoRico`).
+
+If you're unsure, default to Type A whenever a proper noun is present in the source metadata.
+
+---
+
 **Required structure** (in this order):
 
 ### Paragraph 1 — Product identification (40–60 words)
@@ -131,6 +148,8 @@ Example closing: "¿Necesitas más información o quieres solicitar una demostra
 ### Hashtag block (last line of description)
 End with 5–8 hashtags on a single line:
 `#PuertoRico #EquipoPesado #Municipios #[ProductoEspecífico] #SweepAndVac` plus 1–3 product-specific tags.
+
+For **Type A (delivery/customer)** videos: include 1–2 municipio-specific hashtags (e.g., `#Isabela #MunicipioDeIsabela`) alongside the category and geo tags. These drive sharing from municipal accounts, residents, and local press — which are free backlinks and a secondary SEO signal.
 
 ---
 
@@ -244,6 +263,8 @@ Before you output, verify:
 - [ ] `localizations.es` matches primary fields; `localizations.en` is a faithful English version
 - [ ] `playlist_category` is one of the 12 allowed keys (or `"sin_categoria"`)
 - [ ] No invented specs, numbers, customers, or deployments
+- [ ] All proper nouns from the original (municipio names, unit numbers, customer names, event names) are preserved — none generalized away
+- [ ] If the video is a delivery/customer video (Type A), description leads with the specific and hashtag block includes municipio-specific tags
 - [ ] No emojis, no ALL CAPS, no clickbait
 - [ ] Brand names preserved exactly per the catalog (Spider Mowers — note the plural — Vac-Con, Versalift, Beach Tech, etc.)
 - [ ] Output is pure JSON — no preamble, no markdown fences

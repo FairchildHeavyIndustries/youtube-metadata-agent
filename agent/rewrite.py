@@ -298,7 +298,7 @@ def _rewrite_realtime(
     return [r for r in raw if r is not None]
 
 
-def rewrite(client_name: str) -> Path:
+def rewrite(client_name: str, video_ids: list[str] | None = None) -> Path:
     output_dir = Path(f"clients/{client_name}/output")
     source = output_dir / "current_metadata.json"
 
@@ -309,6 +309,10 @@ def rewrite(client_name: str) -> Path:
         data = json.load(f)
 
     videos = data.get("videos", [])
+    if video_ids:
+        videos = [v for v in videos if v.get("id") in set(video_ids)]
+        print(f"Filtered to {len(videos)} videos matching --video-ids")
+
     brief = _load_brief(client_name)
     categories = _load_categories(client_name)
 
@@ -323,6 +327,12 @@ def rewrite(client_name: str) -> Path:
     proposed = {r["_video_id"]: r for r in results}
 
     out_path = output_dir / "proposed_metadata.json"
+    if video_ids and out_path.exists():
+        with open(out_path) as f:
+            existing = json.load(f)
+        existing.update(proposed)
+        proposed = existing
+
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(proposed, f, ensure_ascii=False, indent=2)
 
@@ -333,5 +343,7 @@ def rewrite(client_name: str) -> Path:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--client", required=True)
+    parser.add_argument("--video-ids", nargs="+", default=None,
+                        help="Re-run only these video IDs; merge into existing proposed_metadata.json")
     args = parser.parse_args()
-    rewrite(args.client)
+    rewrite(args.client, video_ids=args.video_ids)
