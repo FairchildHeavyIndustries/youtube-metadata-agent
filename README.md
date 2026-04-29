@@ -169,3 +169,7 @@ All generated files land in `clients/{client}/output/` (gitignored):
 | `parse_errors.json` | Videos Claude could not parse |
 | `push_errors.json` | YouTube API write failures |
 | `batch_errors.json` | Batch API timeout records |
+
+## License
+
+Licensed under the MIT License — see LICENSE for details.
