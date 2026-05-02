@@ -253,6 +253,7 @@ If quota is exceeded mid-run, the agent catches `HttpError 403` with reason `quo
 - **Primary model:** `claude-sonnet-4-6` (override via `ANTHROPIC_MODEL` env var)
 - **Escalation model:** `claude-opus-4-7` (override via `ANTHROPIC_ESCALATION_MODEL`) — used only for videos that fail Sonnet's first and second parse attempts
 - **Validation model:** `claude-haiku-4-5-20251001` — fast spot-check pass on 10% of completed rewrites to confirm hard rules are followed (title length, tag count, no placeholders)
+- **Hard validation rules (enforced in `_validate`):** primary title ≤100 chars, **every localization title ≤100 chars** (YouTube rejects with 400 `invalidVideoMetadata` if any localization title exceeds 100), description ≥200 words, tags ≥15, `playlist_category` must be in `categories.json`
 - **API mode:** Batch API by default; real-time `asyncio` available via `ANTHROPIC_USE_BATCH=false`
 - **System prompt:** contents of `clients/{client}/brief.md`, marked with `cache_control: {type: "ephemeral"}` for prompt caching
 - **User prompt:** current video metadata as JSON (one video per batch request)

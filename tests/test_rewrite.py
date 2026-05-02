@@ -67,6 +67,18 @@ def test_validate_title_too_long():
     assert any("title too long" in e for e in errors)
 
 
+def test_validate_localization_title_too_long():
+    bad = {
+        **VALID_RESPONSE,
+        "localizations": {
+            **VALID_RESPONSE["localizations"],
+            "en": {"title": "A" * 101, "description": " ".join(["word"] * 210)},
+        },
+    }
+    errors = _validate(bad, SAMPLE_CATEGORIES)
+    assert any("localization 'en' title too long" in e for e in errors)
+
+
 def test_validate_description_too_short():
     bad = {**VALID_RESPONSE, "description": "short description"}
     errors = _validate(bad, SAMPLE_CATEGORIES)

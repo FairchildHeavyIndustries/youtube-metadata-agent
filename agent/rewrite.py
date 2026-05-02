@@ -77,6 +77,10 @@ def _validate(parsed: dict, categories: list[str]) -> list[str]:
     category = parsed.get("playlist_category", "")
     if category not in categories:
         errors.append(f"unknown playlist_category: {category!r}")
+    for lang, loc in (parsed.get("localizations") or {}).items():
+        loc_title = loc.get("title", "") if isinstance(loc, dict) else ""
+        if len(loc_title) > 100:
+            errors.append(f"localization {lang!r} title too long: {len(loc_title)} chars")
     return errors
 
 

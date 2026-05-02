@@ -58,7 +58,7 @@ def _push_video(youtube, video_id: str, proposed: dict) -> None:
     raise RuntimeError(f"Failed after {MAX_BACKOFF_RETRIES} retries for {video_id}")
 
 
-def push(client_name: str, resume: bool = False) -> None:
+def push(client_name: str, resume: bool = False, video_id_filter: str | None = None) -> None:
     if not _has_backup(client_name):
         raise RuntimeError(
             f"No original_backup_*.json found for client '{client_name}'. "
@@ -74,6 +74,13 @@ def push(client_name: str, resume: bool = False) -> None:
 
     with open(proposed_path) as f:
         proposed_data: dict = json.load(f)
+
+    if video_id_filter:
+        if video_id_filter not in proposed_data:
+            raise KeyError(
+                f"Video ID '{video_id_filter}' not found in {proposed_path}."
+            )
+        proposed_data = {video_id_filter: proposed_data[video_id_filter]}
 
     ledger = Ledger(client_name)
     youtube = None if DRY_RUN else get_youtube_client()
@@ -124,10 +131,12 @@ if __name__ == "__main__":
     parser.add_argument("--approve", action="store_true",
                         help="Required flag to confirm you have reviewed the diff.")
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--video-id", dest="video_id",
+                        help="Push only this single video ID (for targeted tests).")
     args = parser.parse_args()
 
     if not args.approve:
         print("Pass --approve to confirm you have reviewed the diff before pushing.")
         raise SystemExit(1)
 
-    push(args.client, resume=args.resume)
+    push(args.client, resume=args.resume, video_id_filter=args.video_id)
