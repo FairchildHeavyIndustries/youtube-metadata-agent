@@ -28,10 +28,13 @@ def _load_channel_md(client_name: str) -> dict:
 
     text = channel_path.read_text(encoding="utf-8")
 
-    # Extract YAML front matter (between --- delimiters) or parse entire file as YAML
-    match = re.match(r"^---\s*\n(.*?)\n---", text, re.DOTALL)
-    if match:
-        return yaml.safe_load(match.group(1))
+    # Prefer a ```yaml fenced block, then --- front matter, then the whole file.
+    fenced = re.search(r"```ya?ml\s*\n(.*?)\n```", text, re.DOTALL)
+    if fenced:
+        return yaml.safe_load(fenced.group(1))
+    front_matter = re.search(r"(?:^|\n)---\s*\n(.*?)\n---\s*(?:\n|$)", text, re.DOTALL)
+    if front_matter:
+        return yaml.safe_load(front_matter.group(1))
     return yaml.safe_load(text)
 
 
@@ -57,19 +60,35 @@ def channel(client_name: str) -> None:
             "Fill these in before pushing."
         )
 
+    channel_id = os.environ.get("YOUTUBE_CHANNEL_ID")
+    if not channel_id:
+        raise RuntimeError("YOUTUBE_CHANNEL_ID env var is required for channels.update.")
+
     branding = config.get("branding_settings", {}).get("channel", {})
     description = branding.get("description", "")
     keywords = branding.get("keywords", "")
     default_language = branding.get("default_language", "es")
 
+    # channels.update is PUT-like: omitting an existing field deletes or rejects it.
+    # Read current brandingSettings and merge our changes onto it.
+    youtube = get_youtube_client()
+    resp = youtube.channels().list(part="brandingSettings", id=channel_id).execute()
+    items = resp.get("items", [])
+    if not items:
+        raise RuntimeError(f"Channel {channel_id} not found.")
+    current_branding = items[0].get("brandingSettings", {})
+    current_channel = current_branding.get("channel", {})
+
+    merged_channel = {
+        **current_channel,
+        "description": description,
+        "keywords": keywords,
+        "defaultLanguage": default_language,
+    }
+
     body = {
-        "brandingSettings": {
-            "channel": {
-                "description": description,
-                "keywords": keywords,
-                "defaultLanguage": default_language,
-            }
-        }
+        "id": channel_id,
+        "brandingSettings": {"channel": merged_channel},
     }
 
     if DRY_RUN:
@@ -77,10 +96,10 @@ def channel(client_name: str) -> None:
         print(f"  defaultLanguage: {default_language}")
         print(f"  keywords: {keywords[:100]}...")
         print(f"  description: {description[:100]}...")
+        print(f"  preserved fields: {sorted(set(current_channel) - {'description', 'keywords', 'defaultLanguage'})}")
         print("\nSet DRY_RUN=false to push live.")
         return
 
-    youtube = get_youtube_client()
     try:
         youtube.channels().update(part="brandingSettings", body=body).execute()
         print("Channel metadata updated successfully.")
