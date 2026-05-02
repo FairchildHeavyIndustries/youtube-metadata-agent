@@ -42,7 +42,8 @@ youtube-metadata-agent/
 │   ├── diff.py                ← terminal diff for human review
 │   ├── push.py                ← write video metadata back to YouTube
 │   ├── channel.py             ← write channel-level metadata
-│   ├── playlists.py           ← create/assign playlists
+│   ├── playlists.py           ← create new playlists, assign videos (with ledgers)
+│   ├── playlists_cleanup.py   ← empty + privatize legacy playlists (Editor workaround)
 │   ├── audit.py               ← analyze current state for the report
 │   ├── report.py              ← generate before/after report
 │   └── ledger.py              ← idempotency tracking (pushed.json)
@@ -55,7 +56,10 @@ youtube-metadata-agent/
 │           ├── original_backup_<date>.json     ← immutable, never overwritten
 │           ├── current_metadata.json           ← latest fetch state
 │           ├── proposed_metadata.json          ← Claude's rewrites
-│           ├── pushed.json                     ← idempotency ledger
+│           ├── pushed.json                     ← idempotency ledger (videos.update)
+│           ├── created_playlists.json          ← idempotency ledger (playlists.insert)
+│           ├── playlist_assignments.json       ← idempotency ledger (playlistItems.insert)
+│           ├── legacy_playlists_<date>.json    ← cleanup summary for the report
 │           ├── audit_<date>.json               ← audit findings
 │           ├── report_<date>.md                ← client-facing report
 │           ├── escalations.json                ← videos escalated to Opus
@@ -108,8 +112,11 @@ ANTHROPIC_MODEL=claude-sonnet-4-6          # primary rewrite model
 ANTHROPIC_ESCALATION_MODEL=claude-opus-4-7 # used only for validation failures
 ANTHROPIC_USE_BATCH=true                   # true = Batch API (async, 50% cheaper); false = real-time
 DRY_RUN=true                 # set to false only when ready to push live
-WRITE_RATE_LIMIT_SECONDS=1   # delay between YouTube API writes to avoid 429
+WRITE_RATE_LIMIT_SECONDS=1   # delay between most YouTube API writes
+PLAYLIST_CREATE_DELAY_SECONDS=10  # delay between playlists.insert calls (per-second insert limit is real)
 ```
+
+**Live writes:** invoke `DRY_RUN=false` inline rather than editing `.env`. Example: `DRY_RUN=false python -m agent.push --client <name> --approve`. Keeps `.env` defaulted to safe.
 
 `token_store.py` reads `GOOGLE_REFRESH_TOKEN` from the environment first, then falls back to a local `.tokens.json` file for development. This keeps GitHub Actions and local dev on the same code path.
 
@@ -212,10 +219,51 @@ Updates channel-level metadata from `clients/<client_name>/channel.md`:
 Same DRY_RUN and approval semantics as Step 6.
 
 ### Step 8 — Playlists
+
+There are two scripts for this step. Run cleanup first if the channel has legacy playlists.
+
+#### 8a — Cleanup legacy playlists (if needed)
+```bash
+python agent/playlists_cleanup.py --client <client_name> --approve
+```
+For channels with pre-existing playlists that don't match `categories.json`. **Empties** each legacy playlist (removes every `playlistItem`; videos remain on the channel) and **sets privacy to Private** so they no longer appear on public surfaces. Writes `output/legacy_playlists_<date>.json` for the report.
+
+**Why this is a separate script:** YouTube does not allow Channel Editors to delete playlists — only the channel **Owner** can. The workaround is to empty + privatize via API (Editors can do that), and leave the actual delete to the Owner. The summary file is picked up by `report.py` to render a "Manual Deletion Required" section.
+
+#### 8b — Create new playlists + assign videos
 ```bash
 python agent/playlists.py --client <client_name> --approve
 ```
-Creates playlists from `categories.json` (checking for existing playlists first by title to avoid duplicates), then assigns each video to its category as determined in the rewrite step.
+Creates playlists from `categories.json` (reconciles against the channel via `_get_existing_playlists` to avoid duplicates), then assigns each video to its category.
+
+**Idempotency ledgers (written after every successful API write):**
+- `output/created_playlists.json` — `{category_key: playlist_id}` for every playlist that exists on the channel
+- `output/playlist_assignments.json` — `{video_id: category_key}` for every video added to a playlist
+
+Re-running is always safe: the script reads both ledgers, reconciles `created_playlists.json` against the channel (in case a prior run crashed before writing the ledger), and only does work that hasn't been done.
+
+**Quota safety behavior:**
+- Aborts cleanly on first `403 quotaExceeded` — does not retry. Failed `playlists.insert` and `playlistItems.insert` calls each cost **50 quota units even when they fail**, so retry storms exhaust the daily 10k cap fast.
+- Sleeps `PLAYLIST_CREATE_DELAY_SECONDS` (default **10s**) between playlist creates to dodge YouTube's undocumented per-second insert rate limit.
+- Quota resets at midnight Pacific. Re-run after reset; the ledgers handle the resume.
+
+#### Permission model (Editor vs Owner)
+The OAuth user's role on the channel determines what is possible via the API:
+
+| Operation | Channel Editor | Owner |
+|---|---|---|
+| `videos.update` | Yes | Yes |
+| `channels.update` (branding) | Yes | Yes |
+| `playlists.insert` | Yes | Yes |
+| `playlists.update` (rename, set privacy) | Yes | Yes |
+| `playlistItems.insert` / `delete` | Yes | Yes |
+| `playlists.delete` | **No** | Yes |
+| `playlists.list(mine=True)` | Returns 0 — Editors don't *own* playlists | Returns all |
+| `playlists.list(channelId=...)` | Yes | Yes |
+
+**Implications:**
+- Always use `channelId=` (not `mine=True`) when listing playlists. The `mine=True` form is owner-scoped and returns nothing for Editors.
+- If onboarding requires deleting legacy playlists, plan for the Owner to do that step manually in Studio. The agent uses `playlists_cleanup.py` to empty + privatize them as a workaround.
 
 ### Step 9 — Report
 ```bash
@@ -242,7 +290,11 @@ YouTube Data API v3 quota: **10,000 units/day**.
 
 Comfortably under the daily quota. Subsequent runs (re-fetches, audits) are read-only and trivial.
 
-If quota is exceeded mid-run, the agent catches `HttpError 403` with reason `quotaExceeded`, writes the unprocessed video IDs to `output/pending.json`, and exits cleanly. Resume the next day with `--resume`.
+**Critical: failed write calls still cost quota.** A `playlists.insert` or `playlistItems.insert` that returns 429 or any other error still consumes 50 units. A retry storm on 13 playlists with 3 retries each can burn 2,000+ units before any succeed. This is why `playlists.py` aborts immediately on `403 quotaExceeded` rather than retrying — every retry deepens the hole.
+
+If quota is exceeded mid-run, the agent catches `HttpError 403` with reason `quotaExceeded`, persists progress to its ledger files, and exits cleanly. Quota resets daily at **midnight Pacific Time**. Resume the next day; the ledgers (`pushed.json`, `created_playlists.json`, `playlist_assignments.json`) make every step idempotent.
+
+If a legacy-playlist cleanup is required during onboarding, budget for it: `playlists_cleanup.py` costs 50 units per item removed plus 50 per playlist privatized. A channel with 8 legacy playlists holding 56 items costs ~3,000 units on top of the normal first-run budget.
 
 ---
 
@@ -307,8 +359,9 @@ Note: prompt caching is less reliable in Batch API mode than real-time — brief
 ## Error Handling
 
 - **OAuth token expiry:** `token_store.py` handles automatic refresh. If refresh fails, re-run `auth/oauth_setup.py`.
-- **YouTube quota exceeded:** catch `HttpError 403 quotaExceeded`. Log remaining videos to `output/pending.json` and exit cleanly.
-- **YouTube rate limit (429):** exponential backoff up to 3 retries, then log to `push_errors.json` and continue.
+- **YouTube quota exceeded (403 quotaExceeded):** abort immediately. Failed writes still cost 50 units each, so retries make it worse. Ledgers persist progress; resume after midnight Pacific.
+- **YouTube rate limit (429) on `videos.update` / `playlistItems.insert`:** exponential backoff up to 3 retries, then log to `push_errors.json` and continue.
+- **YouTube rate limit (429) on `playlists.insert`:** the per-second insert limit is real and not documented. `playlists.py` paces creates with `PLAYLIST_CREATE_DELAY_SECONDS` (default 10s). On 429, skip and continue rather than retry — re-running with the ledger picks up missed playlists.
 - **Claude parse failure (real-time):** retry once with an explicit JSON reminder. Second failure escalates to Opus 4.7. If Opus also fails, write raw response to `parse_errors.json` and skip.
 - **Claude parse failure (batch):** failed batch items are automatically re-submitted as a real-time Opus 4.7 call. Logged to `output/escalations.json`.
 - **Batch API timeout:** Anthropic guarantees results within 24 hours. If polling exceeds 26 hours, log the batch ID to `output/batch_errors.json` and exit for manual resume.

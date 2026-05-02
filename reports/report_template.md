@@ -67,6 +67,22 @@ These five videos are representative of the changes applied across the channel.
 
 ---
 
+{% if legacy_playlists %}
+## Legacy Playlists — Manual Deletion Required
+
+The following playlists pre-dated this optimization and are not part of the new category structure. They have been **emptied** (videos remain on the channel; only the playlist association was removed) and **set to private** so they no longer appear on public channel surfaces.
+
+YouTube does not allow Channel Editors to delete playlists — only the channel **Owner** can. Please delete these in YouTube Studio → Content → Playlists when convenient.
+
+| Playlist | Items removed | Set private |
+|---|---|---|
+{% for p in legacy_playlists -%}
+| {{ p.title }} | {{ p.items_removed }} / {{ p.items_total }} | {{ "Yes" if p.set_private else "No" }} |
+{% endfor %}
+
+---
+
+{% endif %}
 ## Next Steps
 
 ### 30-Day Checkpoint

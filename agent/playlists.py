@@ -15,6 +15,15 @@ load_dotenv()
 
 DRY_RUN = os.environ.get("DRY_RUN", "true").lower() == "true"
 RATE_LIMIT = float(os.environ.get("WRITE_RATE_LIMIT_SECONDS", "1"))
+PLAYLIST_CREATE_DELAY = float(os.environ.get("PLAYLIST_CREATE_DELAY_SECONDS", "10"))
+
+
+def _is_quota_exceeded(e: HttpError) -> bool:
+    """Detect 403 quotaExceeded — once seen, all subsequent writes will fail."""
+    if e.resp.status != 403:
+        return False
+    msg = str(e).lower()
+    return "quotaexceeded" in msg or "quota" in msg
 
 
 def _load_categories(client_name: str) -> dict:
@@ -23,14 +32,18 @@ def _load_categories(client_name: str) -> dict:
         return json.load(f)
 
 
-def _get_existing_playlists(youtube) -> dict[str, str]:
-    """Return {playlist_title: playlist_id} for all channel playlists."""
+def _get_existing_playlists(youtube, channel_id: str) -> dict[str, str]:
+    """Return {playlist_title: playlist_id} for all playlists on the channel.
+
+    Uses channelId rather than mine=True so it works for Channel Editors —
+    Editors do not own the playlists, so mine=True returns an empty list.
+    """
     playlists = {}
     next_page = None
     while True:
         resp = youtube.playlists().list(
             part="snippet",
-            mine=True,
+            channelId=channel_id,
             maxResults=50,
             pageToken=next_page,
         ).execute()
@@ -65,10 +78,24 @@ def _add_to_playlist(youtube, playlist_id: str, video_id: str) -> None:
     ).execute()
 
 
+def _load_ledger(path: Path) -> dict[str, str]:
+    if not path.exists():
+        return {}
+    with open(path) as f:
+        return json.load(f)
+
+
+def _save_ledger(path: Path, ledger: dict[str, str]) -> None:
+    with open(path, "w") as f:
+        json.dump(ledger, f, indent=2, ensure_ascii=False)
+
+
 def playlists(client_name: str) -> None:
     output_dir = Path(f"clients/{client_name}/output")
     proposed_path = output_dir / "proposed_metadata.json"
     errors_path = output_dir / "push_errors.json"
+    created_path = output_dir / "created_playlists.json"
+    assigned_path = output_dir / "playlist_assignments.json"
 
     if not proposed_path.exists():
         raise FileNotFoundError(f"{proposed_path} not found. Run rewrite.py first.")
@@ -78,15 +105,31 @@ def playlists(client_name: str) -> None:
 
     categories = _load_categories(client_name)
 
-    # Build category_key -> playlist_title mapping
-    cat_titles = {}
-    for key, cat in categories.items():
-        cat_titles[key] = cat.get("title_es") or cat.get("title") or key
+    cat_meta: dict[str, dict[str, str]] = {}
+    cats_field = categories.get("categories", categories)
+    if isinstance(cats_field, list):
+        for cat in cats_field:
+            key = cat.get("key")
+            if not key:
+                continue
+            cat_meta[key] = {
+                "title": cat.get("title_es") or cat.get("title") or key,
+                "description": cat.get("description", ""),
+            }
+    elif isinstance(cats_field, dict):
+        for key, cat in cats_field.items():
+            if isinstance(cat, dict):
+                title = cat.get("title_es") or cat.get("title") or cat.get("label") or key
+                description = cat.get("description", "")
+            else:
+                title = key
+                description = ""
+            cat_meta[key] = {"title": title, "description": description}
 
     if DRY_RUN:
         print("[DRY RUN] Would create/ensure playlists:")
-        for key, title in cat_titles.items():
-            print(f"  [{key}] {title}")
+        for key, meta in cat_meta.items():
+            print(f"  [{key}] {meta['title']}")
         category_counts: dict[str, int] = {}
         for vid_id, proposed in proposed_data.items():
             cat = proposed.get("playlist_category", "")
@@ -97,36 +140,89 @@ def playlists(client_name: str) -> None:
         print("\nSet DRY_RUN=false to push live.")
         return
 
+    channel_id = os.environ.get("YOUTUBE_CHANNEL_ID")
+    if not channel_id:
+        raise RuntimeError("YOUTUBE_CHANNEL_ID is not set in env.")
+
     youtube = get_youtube_client()
-    existing = _get_existing_playlists(youtube)
 
-    # Create missing playlists
-    playlist_ids: dict[str, str] = {}
-    for key, title in cat_titles.items():
-        if title in existing:
-            playlist_ids[key] = existing[title]
-            print(f"  Playlist exists: {title}")
-        else:
-            pl_id = _create_playlist(youtube, title)
-            playlist_ids[key] = pl_id
-            print(f"  Created playlist: {title} ({pl_id})")
-            time.sleep(RATE_LIMIT)
+    # Resume-safe: load any prior runs' state from disk.
+    # created: {category_key: playlist_id} — playlists we have already created
+    # assigned: {video_id: category_key} — items we have already added to a playlist
+    created: dict[str, str] = _load_ledger(created_path)
+    assigned: dict[str, str] = _load_ledger(assigned_path)
 
-    # Assign videos
+    # Cross-check the channel for any title-matching playlists not in our ledger
+    # (e.g. created in a prior run that crashed before writing the ledger).
+    try:
+        existing = _get_existing_playlists(youtube, channel_id)
+    except HttpError as e:
+        if _is_quota_exceeded(e):
+            print(f"  ABORT: quota exhausted on initial playlists.list. Try again after midnight Pacific.")
+            return
+        raise
+
+    for key, meta in cat_meta.items():
+        if key in created:
+            continue
+        if meta["title"] in existing:
+            created[key] = existing[meta["title"]]
+            print(f"  Reconciled from channel: {meta['title']} ({created[key]})")
+    _save_ledger(created_path, created)
+
+    # Create missing playlists, abort cleanly on quota exhaustion
+    quota_hit = False
+    for key, meta in cat_meta.items():
+        if key in created:
+            print(f"  Playlist exists: {meta['title']}")
+            continue
+
+        try:
+            pl_id = _create_playlist(youtube, meta["title"], meta["description"])
+        except HttpError as e:
+            if _is_quota_exceeded(e):
+                print(f"  ABORT: quota exhausted while creating playlists. {len(created)} of {len(cat_meta)} done. Resume tomorrow.")
+                quota_hit = True
+                break
+            if e.resp.status == 429:
+                print(f"  ERROR 429 on '{meta['title']}' ({key}); skipping. Re-run later to retry.")
+                continue
+            print(f"  ERROR creating '{meta['title']}' ({key}): {e}")
+            continue
+
+        created[key] = pl_id
+        _save_ledger(created_path, created)
+        print(f"  Created playlist: {meta['title']} ({pl_id})")
+        time.sleep(PLAYLIST_CREATE_DELAY)
+
+    if quota_hit:
+        return
+
+    # Assign videos to playlists
     for vid_id, proposed in proposed_data.items():
+        if vid_id in assigned:
+            continue
+
         cat_key = proposed.get("playlist_category", "")
-        pl_id = playlist_ids.get(cat_key)
+        pl_id = created.get(cat_key)
         if not pl_id:
             print(f"  WARNING: no playlist for category {cat_key!r}, skipping {vid_id}")
             continue
 
         try:
             _add_to_playlist(youtube, pl_id, vid_id)
+            assigned[vid_id] = cat_key
+            _save_ledger(assigned_path, assigned)
             print(f"  Added {vid_id} to {cat_key}")
             time.sleep(RATE_LIMIT)
         except HttpError as e:
+            if _is_quota_exceeded(e):
+                print(f"  ABORT: quota exhausted while assigning videos. {len(assigned)} of {len(proposed_data)} done. Resume tomorrow.")
+                return
             if "duplicate" in str(e).lower() or e.resp.status == 409:
-                print(f"  {vid_id} already in {cat_key}, skipping")
+                print(f"  {vid_id} already in {cat_key}, marking assigned")
+                assigned[vid_id] = cat_key
+                _save_ledger(assigned_path, assigned)
             else:
                 print(f"  ERROR adding {vid_id} to {cat_key}: {e}")
                 errors = []

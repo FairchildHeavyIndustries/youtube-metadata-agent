@@ -20,6 +20,7 @@ def report(client_name: str) -> Path:
     proposed_path = output_dir / "proposed_metadata.json"
     audit_path = _latest_file("audit_*.json", output_dir)
     diff_path = _latest_file("diff_*.md", output_dir)
+    legacy_playlists_path = _latest_file("legacy_playlists_*.json", output_dir)
     pushed_path = output_dir / "pushed.json"
     escalations_path = output_dir / "escalations.json"
 
@@ -46,6 +47,11 @@ def report(client_name: str) -> Path:
     if escalations_path.exists():
         with open(escalations_path) as f:
             escalation_count = len(json.load(f))
+
+    legacy_playlists: list[dict] = []
+    if legacy_playlists_path:
+        with open(legacy_playlists_path) as f:
+            legacy_playlists = json.load(f)
 
     # Pick 5 representative sample videos for the report
     current_videos = {v["id"]: v for v in current_data.get("videos", [])}
@@ -82,6 +88,7 @@ def report(client_name: str) -> Path:
         "channel_findings": audit_data.get("channel_findings", {}),
         "samples": samples,
         "diff_path": str(diff_path) if diff_path else "N/A",
+        "legacy_playlists": legacy_playlists,
     }
 
     rendered = template.render(**context)
