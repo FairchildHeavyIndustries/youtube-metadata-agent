@@ -86,7 +86,7 @@ Real client folders (e.g. `clients/acme/`) are gitignored — they contain propr
 - **Python 3.11+**
 - **YouTube Data API v3** — fetch and update video and channel metadata
 - **Google OAuth 2.0** — channel owner authorization (one-time, refresh token persisted)
-- **Anthropic API** — primary model: **`claude-sonnet-4-6`** with Batch API for rewrites; Opus 4.7 reserved for escalation only
+- **Anthropic API** — primary model is a current mid-tier Claude with Batch API for rewrites; the current frontier model is reserved for escalation only. Concrete IDs live in `.env.example` and `agent/rewrite.py` defaults — update them as Anthropic releases new models.
 - **`google-api-python-client`** — YouTube API client
 - **`google-auth-oauthlib`** — OAuth flow
 - **`anthropic`** — Anthropic Python SDK
@@ -108,8 +108,8 @@ GOOGLE_CLIENT_SECRET=
 GOOGLE_REFRESH_TOKEN=        # populated by auth/oauth_setup.py
 ANTHROPIC_API_KEY=
 YOUTUBE_CHANNEL_ID=          # e.g. UCxxxxxxxxxxxxxxx
-ANTHROPIC_MODEL=claude-sonnet-4-6          # primary rewrite model
-ANTHROPIC_ESCALATION_MODEL=claude-opus-4-7 # used only for validation failures
+ANTHROPIC_MODEL=                           # primary rewrite model — current mid-tier Claude (see .env.example)
+ANTHROPIC_ESCALATION_MODEL=                # used only for validation failures — current frontier Claude (see .env.example)
 ANTHROPIC_USE_BATCH=true                   # true = Batch API (async, 50% cheaper); false = real-time
 DRY_RUN=true                 # set to false only when ready to push live
 WRITE_RATE_LIMIT_SECONDS=1   # delay between most YouTube API writes
@@ -126,16 +126,50 @@ PLAYLIST_CREATE_DELAY_SECONDS=10  # delay between playlists.insert calls (per-se
 
 ## Authentication — One-Time Setup
 
-YouTube write access requires OAuth 2.0 (not an API key). The channel owner must complete this once:
+YouTube write access requires OAuth 2.0 (not an API key).
 
 ```bash
 python auth/oauth_setup.py
 ```
 
-This opens a browser window, prompts the channel owner to log in and grant access, then prints the refresh token. Paste it into `.env` (locally) or save it as a GitHub Actions secret. After this step, the agent runs unattended.
+A browser opens, the user signs in and consents, and the script prints a refresh token (also written to `.tokens.json`). Paste the token into `.env` as `GOOGLE_REFRESH_TOKEN` or store it as a GitHub Actions secret. After this step, the agent runs unattended.
 
 **Scopes required:**
 - `https://www.googleapis.com/auth/youtube.force-ssl` — read and write video and channel metadata
+
+### Verify OAuth identity before any write
+
+Always confirm the token is acting-as the intended channel before pushing. This costs 1 quota unit and catches a class of error that is otherwise silent:
+
+```bash
+python -c "from agent.fetch import get_youtube_client; from dotenv import load_dotenv; load_dotenv(); import os; r = get_youtube_client().channels().list(part='snippet', mine=True).execute(); item = r['items'][0]; print('Token acts-as:', item['id'], item['snippet']['title']); print('Target:      ', os.environ['YOUTUBE_CHANNEL_ID']); print('MATCH' if item['id'] == os.environ['YOUTUBE_CHANNEL_ID'] else 'MISMATCH — re-run oauth_setup.py')"
+```
+
+If `MISMATCH`, do not run any write step. See [OAuth identity vs target channel](#oauth-identity-vs-target-channel).
+
+### OAuth client publishing status
+
+The Cloud project's OAuth client runs in **Testing** mode. Two operational consequences:
+
+1. **Test users must be allow-listed.** Add the Google account that will run `oauth_setup.py` at https://console.cloud.google.com/apis/credentials/consent (OAuth consent screen → Test users → + Add users). Effective immediately. Without it, the consent screen returns `Error 403: access_denied`.
+
+2. **Refresh tokens expire every 7 days.** Google auto-revokes refresh tokens issued by unverified apps weekly. When `invalid_grant` errors appear in fetch/push runs, re-run `oauth_setup.py`.
+
+Publishing the app to remove the expiry requires Google's verification process for sensitive scopes (privacy policy, demo video, security assessment) — generally not worth it for an internal agent.
+
+### OAuth identity vs target channel
+
+`videos.update` and `channels.update` route by resource ID, so they always hit the channel that owns the resource regardless of which channel the OAuth user is "acting as." **`playlists.insert` does not.** It always creates the playlist under whichever channel the OAuth token is currently acting-as, and the request body cannot specify a target channel. The `YOUTUBE_CHANNEL_ID` env var has no effect on this routing — it is read by the agent for fetch and reconciliation only.
+
+**This matters when** the OAuth user is a Channel Editor on the target channel but also owns a different channel of their own. OAuth defaults to the owned channel; `videos.update` still routes correctly, but `playlists.insert` lands on the wrong channel. The verify step above catches this in advance.
+
+**Strategies for a correctly-bound token, in order of preference:**
+
+1. **Channel Owner runs OAuth.** No ambiguity — the token acts-as the channel they own.
+2. **Workspace (custom-domain) account.** Workspace accounts have YouTube disabled by default, so they don't own any channel and only ever act-as channels they're Editors on.
+3. **Editor with no channel of their own.** A vanilla Google account that has accepted an Editor invite and never created a channel of its own works, but YouTube has been increasingly aggressive about prompting users to create a channel before accepting Editor invites — verify identity before relying on this path.
+
+Google's consent screen does not reliably surface a brand-account picker even when one exists; do not rely on the picker as the disambiguation mechanism.
 
 ---
 
@@ -183,7 +217,7 @@ For each video, sends the current metadata to Claude with the client brief (`cli
 
 **Prompt caching:** the brief.md system prompt is marked for caching with `cache_control: {type: "ephemeral"}`. After the first request, every subsequent call reads the cached brief at 10% of standard input cost. This is the single biggest cost lever — the brief dominates input token count.
 
-**Model escalation:** first pass uses `ANTHROPIC_MODEL` (Sonnet 4.6). Any video that returns a parse error or fails validation on the second attempt is automatically re-submitted using `ANTHROPIC_ESCALATION_MODEL` (Opus 4.7). Escalations are logged to `output/escalations.json`.
+**Model escalation:** first pass uses `ANTHROPIC_MODEL` (mid-tier). Any video that returns a parse error or fails validation on the second attempt is automatically re-submitted using `ANTHROPIC_ESCALATION_MODEL` (frontier). Escalations are logged to `output/escalations.json`.
 
 **Important:** the output schema requires two full 200-word descriptions (primary language + English) plus titles, tags, and notes — actual output runs ~4,000–5,000 tokens per video. Use `max_tokens=6000` or responses will be truncated mid-JSON.
 
@@ -226,9 +260,9 @@ There are two scripts for this step. Run cleanup first if the channel has legacy
 ```bash
 python agent/playlists_cleanup.py --client <client_name> --approve
 ```
-For channels with pre-existing playlists that don't match `categories.json`. **Empties** each legacy playlist (removes every `playlistItem`; videos remain on the channel) and **sets privacy to Private** so they no longer appear on public surfaces. Writes `output/legacy_playlists_<date>.json` for the report.
+For channels with pre-existing playlists that don't match `categories.json`. **Empties** each legacy playlist (removes every `playlistItem`; the videos themselves remain on the channel) and **sets privacy to Private** so they disappear from public surfaces. Writes `output/legacy_playlists_<date>.json` for the report.
 
-**Why this is a separate script:** YouTube does not allow Channel Editors to delete playlists — only the channel **Owner** can. The workaround is to empty + privatize via API (Editors can do that), and leave the actual delete to the Owner. The summary file is picked up by `report.py` to render a "Manual Deletion Required" section.
+**Why empty + private rather than delete:** The YouTube API only permits the channel **Owner** to delete playlists. Editors can empty and privatize, but not delete. The Owner finishes the job manually in Studio later; `report.py` picks up `legacy_playlists_<date>.json` and renders a "Manual Deletion Required" section in the client report.
 
 #### 8b — Create new playlists + assign videos
 ```bash
@@ -242,10 +276,10 @@ Creates playlists from `categories.json` (reconciles against the channel via `_g
 
 Re-running is always safe: the script reads both ledgers, reconciles `created_playlists.json` against the channel (in case a prior run crashed before writing the ledger), and only does work that hasn't been done.
 
-**Quota safety behavior:**
-- Aborts cleanly on first `403 quotaExceeded` — does not retry. Failed `playlists.insert` and `playlistItems.insert` calls each cost **50 quota units even when they fail**, so retry storms exhaust the daily 10k cap fast.
-- Sleeps `PLAYLIST_CREATE_DELAY_SECONDS` (default **10s**) between playlist creates to dodge YouTube's undocumented per-second insert rate limit.
-- Quota resets at midnight Pacific. Re-run after reset; the ledgers handle the resume.
+**Quota and rate-limit safety:**
+- Aborts cleanly on first `403 quotaExceeded` and exits without retry. Failed `playlists.insert` and `playlistItems.insert` calls each cost 50 quota units regardless of outcome, so retry loops are net-negative.
+- Sleeps `PLAYLIST_CREATE_DELAY_SECONDS` (default **10s**) between playlist creates. YouTube enforces an undocumented per-second insert rate limit; the delay avoids tripping it.
+- Quota resets at midnight Pacific. Re-run after reset; the ledgers pick up where the prior run stopped.
 
 #### Permission model (Editor vs Owner)
 The OAuth user's role on the channel determines what is possible via the API:
@@ -290,9 +324,9 @@ YouTube Data API v3 quota: **10,000 units/day**.
 
 Comfortably under the daily quota. Subsequent runs (re-fetches, audits) are read-only and trivial.
 
-**Critical: failed write calls still cost quota.** A `playlists.insert` or `playlistItems.insert` that returns 429 or any other error still consumes 50 units. A retry storm on 13 playlists with 3 retries each can burn 2,000+ units before any succeed. This is why `playlists.py` aborts immediately on `403 quotaExceeded` rather than retrying — every retry deepens the hole.
+**Failed write calls still cost quota.** A `playlists.insert` or `playlistItems.insert` that returns 429 or any other error consumes 50 units regardless of outcome. The agent therefore aborts on first `403 quotaExceeded` rather than retrying — naive retry loops burn the daily budget before any call succeeds.
 
-If quota is exceeded mid-run, the agent catches `HttpError 403` with reason `quotaExceeded`, persists progress to its ledger files, and exits cleanly. Quota resets daily at **midnight Pacific Time**. Resume the next day; the ledgers (`pushed.json`, `created_playlists.json`, `playlist_assignments.json`) make every step idempotent.
+When quota is exceeded mid-run, the agent persists ledger state to disk and exits cleanly. Quota resets daily at **midnight Pacific Time**. Re-run the next day; the ledgers (`pushed.json`, `created_playlists.json`, `playlist_assignments.json`) skip everything already done.
 
 If a legacy-playlist cleanup is required during onboarding, budget for it: `playlists_cleanup.py` costs 50 units per item removed plus 50 per playlist privatized. A channel with 8 legacy playlists holding 56 items costs ~3,000 units on top of the normal first-run budget.
 
@@ -302,38 +336,29 @@ If a legacy-playlist cleanup is required during onboarding, budget for it: `play
 
 `agent/rewrite.py` calls the Anthropic API using the Batch API by default.
 
-- **Primary model:** `claude-sonnet-4-6` (override via `ANTHROPIC_MODEL` env var)
-- **Escalation model:** `claude-opus-4-7` (override via `ANTHROPIC_ESCALATION_MODEL`) — used only for videos that fail Sonnet's first and second parse attempts
-- **Validation model:** `claude-haiku-4-5-20251001` — fast spot-check pass on 10% of completed rewrites to confirm hard rules are followed (title length, tag count, no placeholders)
+- **Primary model:** current mid-tier Claude (override via `ANTHROPIC_MODEL` env var; default in `.env.example`)
+- **Escalation model:** current frontier Claude (override via `ANTHROPIC_ESCALATION_MODEL`) — used only for videos that fail the primary model's first and second parse attempts
+- **Validation model:** current fast/cheap Claude (override via `ANTHROPIC_VALIDATION_MODEL`) — fast spot-check pass on 10% of completed rewrites to confirm hard rules are followed (title length, tag count, no placeholders)
 - **Hard validation rules (enforced in `_validate`):** primary title ≤100 chars, **every localization title ≤100 chars** (YouTube rejects with 400 `invalidVideoMetadata` if any localization title exceeds 100), description ≥200 words, tags ≥15, `playlist_category` must be in `categories.json`
 - **API mode:** Batch API by default; real-time `asyncio` available via `ANTHROPIC_USE_BATCH=false`
 - **System prompt:** contents of `clients/{client}/brief.md`, marked with `cache_control: {type: "ephemeral"}` for prompt caching
 - **User prompt:** current video metadata as JSON (one video per batch request)
 - **Response format:** strict JSON (schema below)
 - **Max tokens:** 6000 per video
-- **Retries:** on parse failure, retry once (real-time) or flag for escalation (batch). Second failure escalates to Opus 4.7. If Opus also fails, log to `parse_errors.json` and skip.
+- **Retries:** on parse failure, retry once (real-time) or flag for escalation (batch). Second failure escalates to the frontier model. If escalation also fails, log to `parse_errors.json` and skip.
 
 ### Cost model
 
-Current API pricing:
+Two cost levers that stack:
 
-| Model | Input | Output | Cached input |
-|---|---|---|---|
-| Haiku 4.5 | $1/M | $5/M | $0.10/M |
-| Sonnet 4.6 | $3/M | $15/M | $0.30/M |
-| Opus 4.7 | $5/M | $25/M | $0.50/M |
+- **Batch API:** 50% off all token costs vs. real-time. Default is on (`ANTHROPIC_USE_BATCH=true`).
+- **Prompt caching:** the brief.md system prompt is marked with `cache_control: {type: "ephemeral"}`. Cached input reads at roughly 10% of standard input cost. Caching is most reliable in real-time mode; in Batch API mode, cache hits across batch items are not guaranteed.
 
-Batch API: **50% off** all token costs. Stacks with caching.
+For current per-token pricing across Claude tiers, see https://www.anthropic.com/pricing.
 
-Estimated cost for a 50-video channel rewrite:
+Rough order-of-magnitude estimate for a 50-video channel: **under $1 total** with the default mid-tier model + Batch API + caching, plus a few cents per video for any frontier-model escalations. Recompute from current pricing if budgets matter — these figures will drift as Anthropic releases new models.
 
-| Scenario | Effective cost |
-|---|---|
-| Sonnet 4.6, batch, no caching | ~$5–7 total |
-| Sonnet 4.6, real-time, caching warm | ~$2–3 total |
-| Opus 4.7 escalations | ~$0.30/video additional |
-
-Note: prompt caching is less reliable in Batch API mode than real-time — brief.md may not be cached across batch requests. Real-time mode with warm cache is the most cost-efficient path for channels with large briefs.
+The biggest single cost lever is prompt caching on `brief.md`: the brief dominates input token count, and cached reads are ~10x cheaper than uncached. Real-time mode with a warm cache is the most cost-efficient path for channels with large briefs; Batch mode is the most cost-efficient for everything else.
 
 ### Required response schema
 
@@ -362,8 +387,8 @@ Note: prompt caching is less reliable in Batch API mode than real-time — brief
 - **YouTube quota exceeded (403 quotaExceeded):** abort immediately. Failed writes still cost 50 units each, so retries make it worse. Ledgers persist progress; resume after midnight Pacific.
 - **YouTube rate limit (429) on `videos.update` / `playlistItems.insert`:** exponential backoff up to 3 retries, then log to `push_errors.json` and continue.
 - **YouTube rate limit (429) on `playlists.insert`:** the per-second insert limit is real and not documented. `playlists.py` paces creates with `PLAYLIST_CREATE_DELAY_SECONDS` (default 10s). On 429, skip and continue rather than retry — re-running with the ledger picks up missed playlists.
-- **Claude parse failure (real-time):** retry once with an explicit JSON reminder. Second failure escalates to Opus 4.7. If Opus also fails, write raw response to `parse_errors.json` and skip.
-- **Claude parse failure (batch):** failed batch items are automatically re-submitted as a real-time Opus 4.7 call. Logged to `output/escalations.json`.
+- **Claude parse failure (real-time):** retry once with an explicit JSON reminder. Second failure escalates to the frontier model. If escalation also fails, write raw response to `parse_errors.json` and skip.
+- **Claude parse failure (batch):** failed batch items are automatically re-submitted as a real-time call against the frontier model. Logged to `output/escalations.json`.
 - **Batch API timeout:** Anthropic guarantees results within 24 hours. If polling exceeds 26 hours, log the batch ID to `output/batch_errors.json` and exit for manual resume.
 - **Push failure on individual video:** log to `push_errors.json`, continue. Never abort the run.
 - **DRY_RUN guard:** if `DRY_RUN=true`, all push/update/insert operations print intended payload and refuse to execute. Tested explicitly in `test_push.py`.
@@ -393,8 +418,10 @@ Coverage target: 80%+ on `agent/` modules.
 3. Edit `categories.json` with their playlist structure
 4. Edit `channel.md` with their channel-level metadata
 5. Set `YOUTUBE_CHANNEL_ID` in `.env` to their channel ID
-6. Run `auth/oauth_setup.py` with their Google account
-7. Run the full workflow
+6. Add the Google account that will run OAuth as a Test user in the Cloud project (https://console.cloud.google.com/apis/credentials/consent → Test users)
+7. Run `auth/oauth_setup.py` from that account, paste the new refresh token into `.env`
+8. Run the verify-identity command (see [Authentication](#verify-oauth-identity-before-any-write)) and confirm `MATCH`
+9. Run the full workflow
 
 No code changes required.
 
